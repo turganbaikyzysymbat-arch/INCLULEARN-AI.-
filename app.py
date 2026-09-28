@@ -312,6 +312,7 @@ def local_answer(question, source):
         f"• {sentence}" for sentence in matched
     )
 
+
 def local_quiz(source, language="kk"):
     sentences = [
         sentence.strip()
@@ -794,4 +795,3 @@ init_db()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "3000")), debug=False)
-
