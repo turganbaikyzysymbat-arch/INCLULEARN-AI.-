@@ -267,6 +267,77 @@ def local_answer(question, source):
     if not matched:
         return "Бұл сұраққа жүктелген материалдан нақты жауап табылмады. Сұрақты мәтіндегі негізгі терминдермен нақтылап көріңіз."
     return "Материалға сүйенген жауап:\n\n" + "\n".join(f"• {sentence}" for sentence in matched)
+    def local_quiz(source, language="kk"):
+    sentences = [
+        sentence.strip()
+        for sentence in split_sentences(source)
+        if len(sentence.strip()) > 20
+    ]
+
+    if len(sentences) < 5:
+        return []
+
+    questions = []
+
+    for i in range(5):
+        correct_answer = sentences[i]
+
+        options = [correct_answer]
+
+        for j in range(len(sentences)):
+            if j != i and sentences[j] not in options:
+                options.append(sentences[j])
+
+            if len(options) == 4:
+                break
+
+        questions.append({
+            "question": f"Материал бойынша дұрыс жауапты таңдаңыз: {correct_answer[:100]}...",
+            "options": options,
+            "correct": 0
+        })
+
+    return questions
+
+
+def create_quiz(source, language="kk"):
+    if not source:
+        return []
+
+    if ai_configured():
+        prompt = f"""
+Create exactly 5 multiple-choice questions from the material below.
+
+Language: {language}
+
+Return ONLY valid JSON in this format:
+{{
+  "quiz": [
+    {{
+      "question": "Question",
+      "options": ["Answer 1", "Answer 2", "Answer 3", "Answer 4"],
+      "correct": 0
+    }}
+  ]
+}}
+
+Material:
+{source[:12000]}
+"""
+
+        try:
+            answer = ask_model(prompt)
+
+            data = json.loads(answer)
+
+            if isinstance(data, dict) and isinstance(data.get("quiz"), list):
+                return data["quiz"][:5]
+
+        except Exception:
+            pass
+
+    return local_quiz(source, language)
+    
 
 
 def material_json(row, adaptation=None, progress=None, preview=False):
@@ -333,6 +404,59 @@ def get_material(material_id):
     return jsonify(material_json(row, adaptation, progress))
 
 
+@app.post("/api/materials/<int:material_id>/quiz")
+def generate_material_quiz(material_id):
+
+    body = request.get_json(
+        silent=True
+    ) or {}
+
+    requested_language = (
+        body.get("language")
+        or "kk"
+    )
+
+    with db() as connection:
+
+        material = connection.execute(
+            "SELECT * FROM materials WHERE id = ?",
+            (material_id,)
+        ).fetchone()
+
+    if not material:
+
+        return jsonify({
+            "error": "Материал табылмады."
+        }), 404
+
+    if requested_language not in LANGUAGE_NAMES:
+        requested_language = (
+            material["language"]
+            or "kk"
+        )
+
+    quiz, engine = create_quiz(
+        material["source_text"],
+        requested_language
+    )
+
+    if not quiz:
+
+        return jsonify({
+            "error":
+                "Материал бойынша тест "
+                "жасауға мәтін жеткіліксіз."
+        }), 400
+
+    return jsonify({
+        "quiz": quiz,
+        "engine": engine,
+        "language": requested_language
+    })
+
+
+@app.post("/api/materials/<int:material_id>/progress")
+def save_progress(material_id):
 @app.post("/api/materials")
 def create_material():
     try:
