@@ -259,15 +259,24 @@ def extract_file(file):
 def local_answer(question, source):
     query = keywords(question, 8)
     matched = []
+
     for position, sentence in enumerate(split_sentences(source)):
         score = sum(1 for term in query if term in sentence.lower())
+
         if score:
             matched.append((score, -position, sentence))
+
     matched = [row[2] for row in sorted(matched, reverse=True)[:3]]
+
     if not matched:
         return "Бұл сұраққа жүктелген материалдан нақты жауап табылмады. Сұрақты мәтіндегі негізгі терминдермен нақтылап көріңіз."
-    return "Материалға сүйенген жауап:\n\n" + "\n".join(f"• {sentence}" for sentence in matched)
-    def local_quiz(source, language="kk"):
+
+    return "Материалға сүйенген жауап:\n\n" + "\n".join(
+        f"• {sentence}" for sentence in matched
+    )
+
+
+def local_quiz(source, language="kk"):
     sentences = [
         sentence.strip()
         for sentence in split_sentences(source)
@@ -326,7 +335,10 @@ Material:
 """
 
         try:
-            answer = ask_model(prompt)
+            answer = ask_model(
+                "You are a quiz generator. Create questions only from the provided material.",
+                prompt
+            )
 
             data = json.loads(answer)
 
