@@ -1,3 +1,67 @@
+
+// Authentication and role dashboards
+const authScreen = document.querySelector("#authScreen");
+const authSubmit = document.querySelector("#authSubmit");
+let authMode = "login";
+let currentUser = null;
+
+function setAuthMode(mode){
+  authMode=mode;
+  document.querySelector("#loginTab").classList.toggle("active",mode==="login");
+  document.querySelector("#registerTab").classList.toggle("active",mode==="register");
+  document.querySelector("#registerFields").classList.toggle("hidden",mode!=="register");
+  document.querySelector("#authTitle").textContent=mode==="login"?"Кіру":"Тіркелу";
+  authSubmit.textContent=mode==="login"?"Кіру":"Тіркелу";
+  document.querySelector("#authError").textContent="";
+}
+async function authRequest(url, body){
+  const res=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  const data=await res.json();
+  if(!res.ok) throw new Error(data.error||"Қате");
+  return data;
+}
+async function loadRoleDashboard(){
+  const res=await fetch("/api/dashboard");
+  if(!res.ok)return;
+  const data=await res.json();
+  document.querySelector("#roleDashboard").classList.remove("hidden");
+  document.querySelector("#welcomeUser").textContent=`Сәлем, ${currentUser.name}!`;
+  document.querySelector("#roleText").textContent=currentUser.role==="teacher"?"Мұғалім кабинеті":"Оқушы кабинеті";
+  document.querySelector("#studentDashboard").classList.toggle("hidden",currentUser.role!=="student");
+  document.querySelector("#teacherDashboard").classList.toggle("hidden",currentUser.role!=="teacher");
+  if(currentUser.role==="student"){
+    document.querySelector("#statQuiz").textContent=data.quiz_count||0;
+    document.querySelector("#statAverage").textContent=(data.average_score||0)+"%";
+    document.querySelector("#studentClasses").innerHTML=(data.classes||[]).map(c=>`<div class="class-mini"><b>${esc(c.name)}</b><small> Код: ${esc(c.code)}</small></div>`).join("")||"<div class='class-mini'>Сіз әлі сыныпқа қосылған жоқсыз.</div>";
+  }else{
+    document.querySelector("#teacherClasses").innerHTML=(data.classes||[]).map(c=>`<div class="class-mini"><b>${esc(c.name)}</b><small> Код: ${esc(c.code)} · ${c.students} оқушы</small></div>`).join("")||"<div class='class-mini'>Әлі сынып құрылмаған.</div>";
+  }
+}
+async function checkAuth(){
+  try{
+    const res=await fetch("/api/auth/me"); const data=await res.json();
+    if(data.authenticated){ currentUser=data.user; authScreen.classList.add("hidden"); await loadRoleDashboard(); }
+    else authScreen.classList.remove("hidden");
+  }catch(e){ authScreen.classList.remove("hidden"); }
+}
+
+document.querySelector("#loginTab").onclick=()=>setAuthMode("login");
+document.querySelector("#registerTab").onclick=()=>setAuthMode("register");
+document.querySelector("#authRole").onchange=(e)=>{const s=document.querySelector("#authSubject");const l=document.querySelector("#subjectLabel");const show=e.target.value==="teacher";s.classList.toggle("hidden",!show);if(l)l.classList.toggle("hidden",!show);};
+authSubmit.onclick=async()=>{
+  const error=document.querySelector("#authError"); error.textContent="";
+  try{
+    const body={email:document.querySelector("#authEmail").value,password:document.querySelector("#authPassword").value};
+    if(authMode==="register"){body.name=document.querySelector("#authName").value;body.role=document.querySelector("#authRole").value;body.subject=document.querySelector("#authSubject").value;}
+    const data=await authRequest(authMode==="login"?"/api/auth/login":"/api/auth/register",body);
+    currentUser=data.user; authScreen.classList.add("hidden"); await loadRoleDashboard(); toast(authMode==="login"?"Қош келдіңіз!":"Тіркелу сәтті аяқталды!");
+  }catch(e){error.textContent=e.message;}
+};
+document.querySelector("#logoutButton").onclick=async()=>{await fetch("/api/auth/logout",{method:"POST"});location.reload();};
+document.querySelector("#joinClass").onclick=async()=>{try{const d=await authRequest("/api/classes/join",{code:document.querySelector("#classCode").value});toast(`Сіз ${d.class.name} сыныбына қосылдыңыз`);await loadRoleDashboard();}catch(e){toast(e.message);}};
+document.querySelector("#createClass").onclick=async()=>{try{const d=await authRequest("/api/classes",{name:document.querySelector("#className").value,code:document.querySelector("#classCodeCreate").value});toast(`Сынып құрылды: ${d.code}`);await loadRoleDashboard();}catch(e){toast(e.message);}};
+checkAuth();
+
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
