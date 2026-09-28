@@ -118,6 +118,25 @@ def init_db():
                 FOREIGN KEY(student_id) REFERENCES users(id) ON DELETE CASCADE,
                 FOREIGN KEY(material_id) REFERENCES materials(id) ON DELETE CASCADE
             );
+            CREATE TABLE IF NOT EXISTS missions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                teacher_id INTEGER NOT NULL,
+                class_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL,
+                due_date TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(teacher_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY(class_id) REFERENCES classes(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS mission_completions (
+                mission_id INTEGER NOT NULL,
+                student_id INTEGER NOT NULL,
+                completed_at TEXT NOT NULL,
+                PRIMARY KEY(mission_id, student_id),
+                FOREIGN KEY(mission_id) REFERENCES missions(id) ON DELETE CASCADE,
+                FOREIGN KEY(student_id) REFERENCES users(id) ON DELETE CASCADE
+            );
             """
         )
 
@@ -244,7 +263,7 @@ def ask_model(system, prompt):
     payload = json.dumps(
         {
             "model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-            "temperature": 0.2,
+            "temperature": float(os.getenv("OPENAI_TEMPERATURE", "0.25")),
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": prompt},
@@ -348,44 +367,64 @@ def local_quiz(source, language="kk"):
 
 def create_quiz(source, language="kk"):
     if not source:
-        return []
+        return [], "local"
 
     if ai_configured():
         prompt = f"""
-Create exactly 5 multiple-choice questions from the material below.
+Create exactly 5 high-quality multiple-choice questions from the source material.
 
-Language: {language}
+Rules:
+- Use ONLY information explicitly supported by the source.
+- Do not invent facts.
+- Each question must test understanding, not just copy a sentence.
+- Use exactly 4 options per question.
+- Exactly one option must be correct.
+- The correct field is a zero-based option index from 0 to 3.
+- Write the questions and answers in {LANGUAGE_NAMES.get(language, 'қазақ тілі')}.
+- Return ONLY valid JSON. No markdown and no extra text.
 
-Return ONLY valid JSON in this format:
+JSON format:
 {{
   "quiz": [
     {{
-      "question": "Question",
-      "options": ["Answer 1", "Answer 2", "Answer 3", "Answer 4"],
+      "question": "...",
+      "options": ["...", "...", "...", "..."],
       "correct": 0
     }}
   ]
 }}
 
-Material:
-{source[:12000]}
+SOURCE:
+{source[:14000]}
 """
 
         try:
             answer = ask_model(
-                "You are a quiz generator. Create questions only from the provided material.",
+                "You are Ayla AI, a careful educational quiz generator. Ground every question in the provided source.",
                 prompt
             )
-
             data = json.loads(answer)
-
-            if isinstance(data, dict) and isinstance(data.get("quiz"), list):
-                return data["quiz"][:5], "ai"
-
+            quiz = data.get("quiz") if isinstance(data, dict) else None
+            if isinstance(quiz, list):
+                clean_quiz = []
+                for item in quiz[:5]:
+                    if not isinstance(item, dict):
+                        continue
+                    question = clean_text(item.get("question"))
+                    options = item.get("options")
+                    correct = item.get("correct")
+                    if question and isinstance(options, list) and len(options) == 4 and isinstance(correct, int) and 0 <= correct < 4:
+                        clean_quiz.append({
+                            "question": question,
+                            "options": [clean_text(x) for x in options],
+                            "correct": correct,
+                        })
+                if len(clean_quiz) == 5:
+                    return clean_quiz, "ai"
         except Exception:
             pass
 
-    return local_quiz(source, language), "local"
+    return local_quiz(source, language)
     
 
 
@@ -466,6 +505,36 @@ def current_user():
         return connection.execute("SELECT id,name,email,role,subject FROM users WHERE id = ?", (user_id,)).fetchone()
 
 
+def _student_streak(connection, student_id):
+    rows = connection.execute(
+        "SELECT DISTINCT substr(created_at,1,10) day FROM quiz_results WHERE student_id=? ORDER BY day DESC",
+        (student_id,),
+    ).fetchall()
+    days = [datetime.fromisoformat(row["day"]).date() for row in rows if row["day"]]
+    if not days:
+        return 0
+    streak = 1
+    for index in range(1, len(days)):
+        if (days[index - 1] - days[index]).days == 1:
+            streak += 1
+        else:
+            break
+    return streak
+
+
+def _student_badges(quiz_count, average, streak):
+    badges = []
+    if quiz_count >= 1:
+        badges.append({"icon": "✦", "title": "Алғашқы қадам", "text": "Бірінші Quiz аяқталды"})
+    if quiz_count >= 5:
+        badges.append({"icon": "⚡", "title": "Белсенді оқушы", "text": "5 Quiz аяқталды"})
+    if average >= 80:
+        badges.append({"icon": "◆", "title": "Жақсы нәтиже", "text": "Орташа нәтиже 80%+"})
+    if streak >= 3:
+        badges.append({"icon": "🔥", "title": "Үздіксіз оқу", "text": "3 күндік серия"})
+    return badges
+
+
 @app.get("/api/dashboard")
 def dashboard():
     user = current_user()
@@ -473,11 +542,94 @@ def dashboard():
         return jsonify({"error": "Кіру қажет."}), 401
     with db() as connection:
         if user["role"] == "student":
-            results = connection.execute("SELECT COUNT(*) total, COALESCE(AVG(score * 100.0 / NULLIF(total,0)),0) avg_score FROM quiz_results WHERE student_id = ?", (user["id"],)).fetchone()
-            classes = connection.execute("SELECT c.id,c.name,c.code FROM classes c JOIN class_members m ON m.class_id=c.id WHERE m.student_id=? ORDER BY c.created_at DESC", (user["id"],)).fetchall()
-            return jsonify({"role":"student","quiz_count":results["total"],"average_score":round(results["avg_score"] or 0),"classes":[dict(x) for x in classes]})
-        classes = connection.execute("SELECT c.id,c.name,c.code,(SELECT COUNT(*) FROM class_members m WHERE m.class_id=c.id) students FROM classes c WHERE c.teacher_id=? ORDER BY c.created_at DESC", (user["id"],)).fetchall()
-        return jsonify({"role":"teacher","classes":[dict(x) for x in classes]})
+            results = connection.execute(
+                "SELECT COUNT(*) total, COALESCE(AVG(score * 100.0 / NULLIF(total,0)),0) avg_score "
+                "FROM quiz_results WHERE student_id = ?",
+                (user["id"],),
+            ).fetchone()
+            classes = connection.execute(
+                "SELECT c.id,c.name,c.code FROM classes c JOIN class_members m ON m.class_id=c.id "
+                "WHERE m.student_id=? ORDER BY c.created_at DESC",
+                (user["id"],),
+            ).fetchall()
+            recent = connection.execute(
+                "SELECT qr.score,qr.total,qr.created_at,m.title FROM quiz_results qr "
+                "JOIN materials m ON m.id=qr.material_id WHERE qr.student_id=? "
+                "ORDER BY qr.created_at DESC LIMIT 5",
+                (user["id"],),
+            ).fetchall()
+            quiz_count = int(results["total"] or 0)
+            average = round(results["avg_score"] or 0)
+            streak = _student_streak(connection, user["id"])
+            badges = _student_badges(quiz_count, average, streak)
+            today = now()[:10]
+            teacher_mission = connection.execute(
+                "SELECT m.id,m.title,m.description,m.due_date, "
+                "EXISTS(SELECT 1 FROM mission_completions mc WHERE mc.mission_id=m.id AND mc.student_id=?) completed "
+                "FROM missions m JOIN class_members cm ON cm.class_id=m.class_id "
+                "WHERE cm.student_id=? AND m.due_date>=? ORDER BY m.created_at DESC LIMIT 1",
+                (user["id"], user["id"], today),
+            ).fetchone()
+            if teacher_mission:
+                mission = {
+                    "source": "teacher",
+                    "id": teacher_mission["id"],
+                    "title": teacher_mission["title"],
+                    "text": teacher_mission["description"],
+                    "done": 1 if teacher_mission["completed"] else 0,
+                    "target": 1,
+                    "due_date": teacher_mission["due_date"],
+                }
+            else:
+                mission_target = 1 if quiz_count == 0 else 2
+                mission_done = min(quiz_count, mission_target)
+                mission = {
+                    "source": "system",
+                    "id": None,
+                    "title": "Ayla AI миссиясы",
+                    "text": "1 Quiz орындаңыз" if quiz_count == 0 else "Тағы бір Quiz орындап, оқу серияңызды жалғастырыңыз",
+                    "done": mission_done,
+                    "target": mission_target,
+                }
+            return jsonify({
+                "role": "student",
+                "quiz_count": quiz_count,
+                "average_score": average,
+                "streak": streak,
+                "badges": badges,
+                "mission": mission,
+                "classes": [dict(x) for x in classes],
+                "recent": [dict(x) for x in recent],
+            })
+
+        classes = connection.execute(
+            "SELECT c.id,c.name,c.code,(SELECT COUNT(*) FROM class_members m WHERE m.class_id=c.id) students "
+            "FROM classes c WHERE c.teacher_id=? ORDER BY c.created_at DESC",
+            (user["id"],),
+        ).fetchall()
+        total_students = 0
+        class_data = []
+        for item in classes:
+            stats = connection.execute(
+                "SELECT COUNT(qr.id) attempts, COALESCE(AVG(qr.score * 100.0 / NULLIF(qr.total,0)),0) avg_score "
+                "FROM quiz_results qr JOIN class_members cm ON cm.student_id=qr.student_id "
+                "WHERE cm.class_id=?",
+                (item["id"],),
+            ).fetchone()
+            total_students += int(item["students"] or 0)
+            class_data.append({**dict(item), "attempts": int(stats["attempts"] or 0), "average": round(stats["avg_score"] or 0)})
+        missions = connection.execute(
+            "SELECT m.id,m.class_id,m.title,m.description,m.due_date,c.name class_name "
+            "FROM missions m JOIN classes c ON c.id=m.class_id WHERE m.teacher_id=? "
+            "ORDER BY m.created_at DESC LIMIT 20", (user["id"],)
+        ).fetchall()
+        return jsonify({
+            "role": "teacher",
+            "classes": class_data,
+            "class_count": len(class_data),
+            "total_students": total_students,
+            "missions": [dict(x) for x in missions],
+        })
 
 
 @app.post("/api/classes")
@@ -537,6 +689,49 @@ def save_quiz_result():
         if not exists: return jsonify({"error":"Материал табылмады."}),404
         connection.execute("INSERT INTO quiz_results(student_id,material_id,score,total,created_at) VALUES(?,?,?,?,?)",(user["id"],material_id,score,total,now()))
     return jsonify({"ok":True,"score":score,"total":total})
+
+
+@app.post("/api/missions")
+def create_mission():
+    user = current_user()
+    if not user or user["role"] != "teacher":
+        return jsonify({"error": "Мұғалім ретінде кіру қажет."}), 403
+    body = request.get_json(silent=True) or {}
+    title = clean_text(body.get("title"))
+    description = clean_text(body.get("description"))
+    class_id = int(body.get("class_id", 0))
+    due_date = clean_text(body.get("due_date")) or now()[:10]
+    if not title or not description or not class_id:
+        return jsonify({"error": "Миссия атауын, сипаттамасын және сыныпты енгізіңіз."}), 400
+    with db() as connection:
+        owned = connection.execute("SELECT id FROM classes WHERE id=? AND teacher_id=?", (class_id, user["id"])).fetchone()
+        if not owned:
+            return jsonify({"error": "Сынып табылмады."}), 404
+        cur = connection.execute(
+            "INSERT INTO missions(teacher_id,class_id,title,description,due_date,created_at) VALUES(?,?,?,?,?,?)",
+            (user["id"], class_id, title, description, due_date, now()),
+        )
+        mission_id = cur.lastrowid
+    return jsonify({"id": mission_id, "title": title, "description": description, "due_date": due_date}), 201
+
+
+@app.post("/api/missions/<int:mission_id>/complete")
+def complete_mission(mission_id):
+    user = current_user()
+    if not user or user["role"] != "student":
+        return jsonify({"error": "Оқушы ретінде кіру қажет."}), 403
+    with db() as connection:
+        mission = connection.execute(
+            "SELECT m.id FROM missions m JOIN class_members cm ON cm.class_id=m.class_id "
+            "WHERE m.id=? AND cm.student_id=?", (mission_id, user["id"])
+        ).fetchone()
+        if not mission:
+            return jsonify({"error": "Миссия табылмады."}), 404
+        connection.execute(
+            "INSERT OR REPLACE INTO mission_completions(mission_id,student_id,completed_at) VALUES(?,?,?)",
+            (mission_id, user["id"], now()),
+        )
+    return jsonify({"ok": True})
 
 
 @app.get("/")
@@ -679,12 +874,35 @@ def await_adaptation(material_id, text, language):
     engine = "local"
     if ai_configured():
         try:
-            prompt = (
-                "Берілген материалды инклюзивті оқытуға бейімде. Тек материалдағы ақпаратты пайдалан. "
-                f"Нәтижені {LANGUAGE_NAMES.get(language, 'қазақ тілі')} тілінде бер. "
-                "Төмендегі JSON кілттерін сақта: simplified, steps, examples, explanation, summary, tasks, audio."
-                f"\nМатериал:\n{text}"
-            )
+            prompt = f"""
+Сен IncluLearn AI платформасындағы Ayla AI білім беру ассистентісің.
+Берілген оқу материалын оқушыға түсінікті және инклюзивті форматқа бейімде.
+
+Қатаң ережелер:
+1. Тек берілген материалдағы ақпаратқа сүйен. Ойдан дерек, факт, анықтама қоспа.
+2. Маңызды терминдерді сақта, бірақ күрделі сөйлемдерді қарапайым тілмен түсіндір.
+3. Жауап {LANGUAGE_NAMES.get(language, 'қазақ тілі')} тілінде болсын.
+4. Оқушыға арналған нақты, қысқа және пайдалы мәтін жаса.
+5. steps нөмірленген қадамдар болсын.
+6. examples материалдағы ұғымдарды түсінуге көмектесетін мысалдар болсын; материалда жоқ фактіні шындық ретінде қоспа.
+7. tasks оқушы орындай алатын нақты тапсырмалар болсын.
+8. audio табиғи түрде тыңдауға болатын тұтас мәтін болсын.
+9. summary тек негізгі ойларды қамтысын.
+
+Тек мына JSON құрылымын қайтар:
+{{
+  "simplified": "...",
+  "steps": "1. ...\n2. ...",
+  "examples": "1. ...\n2. ...",
+  "explanation": "...",
+  "summary": "...",
+  "tasks": "1. ...\n2. ...",
+  "audio": "..."
+}}
+
+МАТЕРИАЛ:
+{text[:16000]}
+"""
             response = ask_model(
                 "Сен IncluLearn AI платформасындағы Ayla AI ассистентісің. Қысқа, түсінікті жауап бер.",
                 prompt,
@@ -776,9 +994,19 @@ def ask_about_material(material_id):
     if ai_configured():
         try:
             answer = ask_model(
-                "Сен Ayla AI, инклюзивті білім беру ассистентісің. Тек берілген материалға сүйен. "
-                f"Жауап жоқ болса, оны анық айт. {LANGUAGE_NAMES.get(material['language'], 'қазақ тілі')} тілінде жауап бер.",
-                f"Материал:\n{material['source_text']}\n\nСұрақ:\n{question}",
+                """Сен Ayla AI — IncluLearn AI платформасындағы жеке оқу ассистентісің.
+Жауапты оқушыға түсінікті, нақты және пайдалы етіп бер.
+Қатаң ережелер:
+1. Негізгі жауапты тек берілген оқу материалына сүйеніп құрастыр.
+2. Материалда жоқ фактіні ойдан қоспа. Егер жауап материалда жоқ болса, оны ашық айт.
+3. Алдымен қысқа тікелей жауап бер, кейін қажет болса 2–4 қысқа түсіндіру немесе мысал келтір.
+4. Күрделі термин болса, оны қарапайым тілмен түсіндір.
+5. Оқушыға жасына сай, жылы, бірақ академиялық стильде жауап бер.
+6. Сұрақ тапсырма сұраса, қадамдармен көрсет.
+7. Сұрақ түсініксіз болса, нақтылау сұрағын қой.
+8. Жауапты тек {language} тілінде бер.
+""".format(language=LANGUAGE_NAMES.get(material['language'], 'қазақ тілі')),
+                f"ОҚУ МАТЕРИАЛЫ:\n{material['source_text']}\n\nОҚУШЫНЫҢ СҰРАҒЫ:\n{question}",
             )
             engine = "ai"
         except Exception:
