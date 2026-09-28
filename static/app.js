@@ -32,10 +32,27 @@ async function loadRoleDashboard(){
   document.querySelector("#roleDashboard").classList.remove("hidden");
   document.querySelector("#welcomeUser").textContent=`Сәлем, ${currentUser.name}!`;
   const student=currentUser.role==="student";
-  document.querySelector("#roleText").textContent=student?"Сенің оқу кеңістігің":"Мұғалімнің оқу workspace-і";
-  document.querySelector("#roleKicker").textContent=student?"MY LEARNING":"TEACHER WORKSPACE";
+  document.body.classList.toggle("student-mode", student);
+  document.body.classList.toggle("teacher-mode", !student);
+  document.querySelector("#roleText").textContent=student?"Бүгінгі оқу жолыңды өзіңе ыңғайлы қарқынмен жалғастыр.":"Материалдар мен сыныптардың оқу процесін бір жерден басқарыңыз.";
+  document.querySelector("#roleKicker").textContent=student?"STUDENT SPACE":"TEACHER WORKSPACE";
   document.querySelector("#studentDashboard").classList.toggle("hidden",!student);
   document.querySelector("#teacherDashboard").classList.toggle("hidden",student);
+  const nav=document.querySelector(".sidebar nav");
+  if(nav){
+    nav.innerHTML=student ? `
+      <button class="nav-link active" data-view="dashboard"><span>⌂</span><span>Менің оқуым</span></button>
+      <button class="nav-link" data-view="materials"><span>▱</span><span>Материалдар</span></button>
+      <button class="nav-link" data-view="about"><span>✦</span><span>Ayla AI</span></button>
+    ` : `
+      <button class="nav-link active" data-view="dashboard"><span>⌂</span><span>Teacher Space</span></button>
+      <button class="nav-link" data-view="materials"><span>▱</span><span>Материалдар</span></button>
+      <button class="nav-link" data-view="about"><span>✦</span><span>Ayla AI</span></button>
+    `;
+    $$(".nav-link").forEach((item) => item.onclick = () => showView(item.dataset.view));
+  }
+  const aiProfile=document.querySelector(".ai-profile");
+  if(aiProfile && student){ aiProfile.querySelector("small").textContent="Сенің оқу серігің"; }
   if(student){
     document.querySelector("#statQuiz").textContent=data.quiz_count||0;
     document.querySelector("#statAverage").textContent=(data.average_score||0)+"%";
