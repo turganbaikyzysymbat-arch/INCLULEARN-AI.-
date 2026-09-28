@@ -1,6 +1,5 @@
 
-
-// Authentication and role dashboards
+// Authentication, role dashboards and learning features
 const authScreen = document.querySelector("#authScreen");
 const authSubmit = document.querySelector("#authSubmit");
 let authMode = "login";
@@ -12,7 +11,7 @@ function setAuthMode(mode){
   document.querySelector("#registerTab").classList.toggle("active",mode==="register");
   document.querySelector("#registerFields").classList.toggle("hidden",mode!=="register");
   document.querySelector("#authTitle").textContent=mode==="login"?"Кіру":"Тіркелу";
-  authSubmit.textContent=mode==="login"?"Кіру":"Тіркелу";
+  authSubmit.innerHTML=mode==="login"?"Кіру <b>→</b>":"Тіркелу <b>→</b>";
   document.querySelector("#authError").textContent="";
 }
 async function authRequest(url, body){
@@ -21,47 +20,127 @@ async function authRequest(url, body){
   if(!res.ok) throw new Error(data.error||"Қате");
   return data;
 }
+function levelFor(score, quizzes){
+  if(quizzes >= 10 || score >= 90) return "Master";
+  if(quizzes >= 5 || score >= 75) return "Explorer";
+  return "Starter";
+}
 async function loadRoleDashboard(){
   const res=await fetch("/api/dashboard");
   if(!res.ok)return;
   const data=await res.json();
   document.querySelector("#roleDashboard").classList.remove("hidden");
   document.querySelector("#welcomeUser").textContent=`Сәлем, ${currentUser.name}!`;
-  document.querySelector("#roleText").textContent=currentUser.role==="teacher"?"Мұғалім кабинеті":"Оқушы кабинеті";
-  document.querySelector("#studentDashboard").classList.toggle("hidden",currentUser.role!=="student");
-  document.querySelector("#teacherDashboard").classList.toggle("hidden",currentUser.role!=="teacher");
-  if(currentUser.role==="student"){
+  const student=currentUser.role==="student";
+  document.querySelector("#roleText").textContent=student?"Сенің оқу кеңістігің":"Мұғалімнің оқу workspace-і";
+  document.querySelector("#roleKicker").textContent=student?"MY LEARNING":"TEACHER WORKSPACE";
+  document.querySelector("#studentDashboard").classList.toggle("hidden",!student);
+  document.querySelector("#teacherDashboard").classList.toggle("hidden",student);
+  if(student){
     document.querySelector("#statQuiz").textContent=data.quiz_count||0;
     document.querySelector("#statAverage").textContent=(data.average_score||0)+"%";
-    document.querySelector("#studentClasses").innerHTML=(data.classes||[]).map(c=>`<div class="class-mini"><b>${esc(c.name)}</b><small> Код: ${esc(c.code)}</small></div>`).join("")||"<div class='class-mini'>Сіз әлі сыныпқа қосылған жоқсыз.</div>";
+    document.querySelector("#statStreak").textContent=data.streak||0;
+    document.querySelector("#statLevel").textContent=levelFor(data.average_score||0,data.quiz_count||0);
+    const mission=data.mission||{source:"system",id:null,title:"Ayla AI миссиясы",done:0,target:1,text:"Бір Quiz орындаңыз"};
+    document.querySelector("#missionText").textContent=mission.text;
+    document.querySelector("#missionProgress").textContent=mission.done>=mission.target ? "✓ орындалды" : `${mission.done}/${mission.target}`;
+    document.querySelector("#missionFill").style.width=`${Math.min(100,(mission.done/Math.max(1,mission.target))*100)}%`;
+    const missionTitle=document.querySelector("#missionTitle");
+    if(missionTitle) missionTitle.textContent=mission.title || "Бүгінгі оқу миссиясы";
+    const missionAction=document.querySelector("#missionAction");
+    if(missionAction){
+      missionAction.dataset.missionId=mission.id||"";
+      missionAction.dataset.missionSource=mission.source||"system";
+      missionAction.textContent=mission.done>=mission.target ? "Аяқталды ✓" : (mission.source==="teacher" ? "Белгілеу ✓" : "Бастау →");
+      missionAction.disabled=mission.done>=mission.target;
+    }
+    document.querySelector("#studentBadges").innerHTML=(data.badges||[]).map(b=>`<div class="badge-item"><span>${b.icon}</span><b>${esc(b.title)}</b><small>${esc(b.text)}</small></div>`).join("")||'<div class="badge-empty">Алғашқы Quiz-ді орындап, бірінші белгіңді ал.</div>';
+    document.querySelector("#studentClasses").innerHTML=(data.classes||[]).map(c=>`<div class="class-mini"><div><b>${esc(c.name)}</b><small>${esc(c.code)}</small></div><span>✓</span></div>`).join("")||"<div class='empty-inline'>Сыныпқа әлі қосылған жоқсыз.</div>";
+    document.querySelector("#recentActivity").innerHTML=(data.recent||[]).map(x=>{const pct=Math.round((x.score/Math.max(1,x.total))*100);return `<div class="recent-item"><div><b>${esc(x.title)}</b><small>${esc(x.created_at)}</small></div><strong>${pct}%</strong></div>`}).join("")||'<div class="empty-inline">Әзірге Quiz нәтижесі жоқ.</div>';
   }else{
-    document.querySelector("#teacherClasses").innerHTML=(data.classes||[]).map(c=>`<div class="class-mini"><b>${esc(c.name)}</b><small> Код: ${esc(c.code)} · ${c.students} оқушы</small></div>`).join("")||"<div class='class-mini'>Әлі сынып құрылмаған.</div>";
+    document.querySelector("#teacherStudentCount").textContent=data.total_students||0;
+    document.querySelector("#teacherClassCount").textContent=data.class_count||0;
+    const classes=data.classes||[];
+    const attempts=classes.reduce((s,c)=>s+(c.attempts||0),0);
+    const avg=classes.length?Math.round(classes.reduce((s,c)=>s+(c.average||0),0)/classes.length):0;
+    document.querySelector("#teacherAttempts").textContent=attempts;
+    document.querySelector("#teacherAverage").textContent=avg+"%";
+    document.querySelector("#teacherClasses").innerHTML=classes.map(c=>`<div class="teacher-class-card"><div class="teacher-class-top"><div><span class="class-dot">✦</span><div><b>${esc(c.name)}</b><small>${esc(c.code)}</small></div></div><button class="copy-code" data-code="${esc(c.code)}">Кодты көшіру</button></div><div class="teacher-class-metrics"><span><b>${c.students||0}</b> оқушы</span><span><b>${c.attempts||0}</b> Quiz</span><span><b>${c.average||0}%</b> орташа</span></div></div>`).join("")||'<div class="empty-inline">Алдымен бірінші сыныпты құрыңыз.</div>';
+    document.querySelectorAll(".copy-code").forEach(btn=>btn.onclick=()=>{navigator.clipboard?.writeText(btn.dataset.code);toast("Сынып коды көшірілді");});
+    const missionClass=document.querySelector("#missionClass");
+    if(missionClass){
+      missionClass.innerHTML='<option value="">Сыныпты таңдаңыз</option>'+classes.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("");
+    }
+    const missionList=document.querySelector("#teacherMissions");
+    if(missionList){
+      missionList.innerHTML=(data.missions||[]).map(m=>`<div class="mission-admin-item"><div><b>${esc(m.title)}</b><small>${esc(m.class_name)} · ${esc(m.due_date)}</small><p>${esc(m.description)}</p></div></div>`).join("")||'<div class="empty-inline">Әлі миссия берілген жоқ.</div>';
+    }
   }
 }
 async function checkAuth(){
-  try{
-    const res=await fetch("/api/auth/me"); const data=await res.json();
-    if(data.authenticated){ currentUser=data.user; authScreen.classList.add("hidden"); await loadRoleDashboard(); }
-    else authScreen.classList.remove("hidden");
-  }catch(e){ authScreen.classList.remove("hidden"); }
+  try{const res=await fetch("/api/auth/me");const data=await res.json();if(data.authenticated){currentUser=data.user;authScreen.classList.add("hidden");await loadRoleDashboard();}else authScreen.classList.remove("hidden");}
+  catch(e){authScreen.classList.remove("hidden");}
 }
 
 document.querySelector("#loginTab").onclick=()=>setAuthMode("login");
 document.querySelector("#registerTab").onclick=()=>setAuthMode("register");
-document.querySelector("#authRole").onchange=(e)=>document.querySelector("#authSubject").classList.toggle("hidden",e.target.value!=="teacher");
+document.querySelector("#authRole").onchange=(e)=>{const s=document.querySelector("#authSubject");const l=document.querySelector("#subjectLabel");const show=e.target.value==="teacher";s.classList.toggle("hidden",!show);if(l)l.classList.toggle("hidden",!show);};
 authSubmit.onclick=async()=>{
-  const error=document.querySelector("#authError"); error.textContent="";
+  const error=document.querySelector("#authError");error.textContent="";
   try{
     const body={email:document.querySelector("#authEmail").value,password:document.querySelector("#authPassword").value};
     if(authMode==="register"){body.name=document.querySelector("#authName").value;body.role=document.querySelector("#authRole").value;body.subject=document.querySelector("#authSubject").value;}
     const data=await authRequest(authMode==="login"?"/api/auth/login":"/api/auth/register",body);
-    currentUser=data.user; authScreen.classList.add("hidden"); await loadRoleDashboard(); toast(authMode==="login"?"Қош келдіңіз!":"Тіркелу сәтті аяқталды!");
+    currentUser=data.user;authScreen.classList.add("hidden");await loadRoleDashboard();toast(authMode==="login"?"Қош келдіңіз!":"Тіркелу сәтті аяқталды!");
   }catch(e){error.textContent=e.message;}
 };
 document.querySelector("#logoutButton").onclick=async()=>{await fetch("/api/auth/logout",{method:"POST"});location.reload();};
 document.querySelector("#joinClass").onclick=async()=>{try{const d=await authRequest("/api/classes/join",{code:document.querySelector("#classCode").value});toast(`Сіз ${d.class.name} сыныбына қосылдыңыз`);await loadRoleDashboard();}catch(e){toast(e.message);}};
+document.querySelector("#missionAction")?.addEventListener("click",async()=>{
+  const btn=document.querySelector("#missionAction");
+  const id=btn?.dataset.missionId;
+  const source=btn?.dataset.missionSource;
+  if(source==="teacher" && id){
+    try{
+      const d=await authRequest(`/api/missions/${id}/complete`,{});
+      toast("Миссия орындалды ✓");
+      await loadRoleDashboard();
+    }catch(e){toast(e.message);}
+  }else{
+    showView("materials");
+  }
+});
+
+document.querySelector("#createMission")?.addEventListener("click",async()=>{
+  try{
+    const body={
+      class_id:Number(document.querySelector("#missionClass").value),
+      title:document.querySelector("#missionTitleInput").value,
+      description:document.querySelector("#missionDescription").value,
+      due_date:document.querySelector("#missionDueDate").value
+    };
+    await authRequest("/api/missions",body);
+    document.querySelector("#missionTitleInput").value="";
+    document.querySelector("#missionDescription").value="";
+    toast("Оқу миссиясы оқушыларға берілді ✓");
+    await loadRoleDashboard();
+  }catch(e){toast(e.message);}
+});
 document.querySelector("#createClass").onclick=async()=>{try{const d=await authRequest("/api/classes",{name:document.querySelector("#className").value,code:document.querySelector("#classCodeCreate").value});toast(`Сынып құрылды: ${d.code}`);await loadRoleDashboard();}catch(e){toast(e.message);}};
+
+function initFocusMode(){
+  const overlay=document.querySelector("#focusOverlay"); if(!overlay)return;
+  let seconds=25*60, timer=null;
+  const render=()=>{const m=String(Math.floor(seconds/60)).padStart(2,"0"),s=String(seconds%60).padStart(2,"0");document.querySelector("#focusTimer").textContent=`${m}:${s}`;};
+  document.querySelector("#focusButton")?.addEventListener("click",()=>{overlay.classList.remove("hidden");render();});
+  document.querySelector("#studentStudy")?.addEventListener("click",()=>{showView("materials");});
+  document.querySelector("#missionAction")?.addEventListener("click",()=>{showView("materials");});
+  document.querySelector("#closeFocus")?.addEventListener("click",()=>{clearInterval(timer);timer=null;overlay.classList.add("hidden");});
+  document.querySelector("#focusStart")?.addEventListener("click",()=>{if(timer){clearInterval(timer);timer=null;document.querySelector("#focusStart").textContent="Жалғастыру";return;}document.querySelector("#focusStart").textContent="Пауза";timer=setInterval(()=>{seconds--;render();if(seconds<=0){clearInterval(timer);timer=null;seconds=0;render();toast("Focus сессиясы аяқталды. Жарайсың!");}},1000);});
+  document.querySelector("#focusReset")?.addEventListener("click",()=>{clearInterval(timer);timer=null;seconds=25*60;document.querySelector("#focusStart").textContent="Бастау";render();});
+}
 checkAuth();
+
 
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
@@ -174,7 +253,7 @@ function content(key, result) {
     return `<div class="diagram">${nodes.map((node, index) => `${index ? '<span class="arrow">→</span>' : ""}<div class="node">${esc(node)}</div>`).join("")}</div><div class="chips">${(result.keywords || []).map((item) => `<span class="chip">${esc(item)}</span>`).join("")}</div>`;
   }
   if (key === "audio") {
-    return `<div class="audio"><button id="speak" aria-label="${esc(t("audio"))}">▶</button><div><b>${esc(t("audio"))}</b><small>${esc(t("answerFromMaterial"))}</small></div><div class="wave"></div></div><div class="result-body">${esc(result.audio)}</div>`;
+    return `<div class="audio"><div class="audio-controls"><button id="speak" class="audio-play" aria-label="Ойнату">▶</button><button id="pauseSpeak" class="audio-control" aria-label="Пауза">Ⅱ</button><button id="stopSpeak" class="audio-control" aria-label="Тоқтату">■</button><button id="audioToggle" class="audio-control" aria-label="Дыбысты қосу/өшіру">🔊</button></div><div class="audio-copy"><b>${esc(t("audio"))}</b><small>${esc(t("answerFromMaterial"))}</small></div><div class="wave"></div></div><div class="result-body">${esc(result.audio || result.summary || result.simplified || "")}</div>`;
   }
   return `<div class="result-body ${key === "large" ? "large" : ""}">${esc(result[key] || "Бұл формат таңдалмады.")}</div>${key === "summary" ? `<div class="chips">${(result.keywords || []).map((item) => `<span class="chip">${esc(item)}</span>`).join("")}</div>` : ""}`;
 }
@@ -238,13 +317,60 @@ function renderResult(data) {
     navigator.clipboard?.writeText(typeof value === "object" ? JSON.stringify(value) : value || "");
     toast(t("copied"));
   };
+  const audioText = state.result?.audio || state.result?.summary || state.result?.simplified || "";
+  const audioLang = state.language === "ru" ? "ru-RU" : state.language === "en" ? "en-US" : "kk-KZ";
+  let audioEnabled = localStorage.getItem("inclulearnAudioEnabled") !== "false";
+  const chooseVoice = () => {
+    if (!("speechSynthesis" in window)) return null;
+    const voices = speechSynthesis.getVoices();
+    if (!voices.length) return null;
+    const base = audioLang.slice(0,2).toLowerCase();
+    return voices.find(v => v.lang?.toLowerCase() === audioLang.toLowerCase()) ||
+      voices.find(v => v.lang?.toLowerCase().startsWith(base)) ||
+      voices.find(v => v.default) || voices[0];
+  };
+  const updateAudioToggle = () => {
+    const btn = $("#audioToggle");
+    if (btn) { btn.textContent = audioEnabled ? "🔊" : "🔇"; btn.title = audioEnabled ? "Дыбысты өшіру" : "Дыбысты қосу"; }
+  };
+  updateAudioToggle();
+  $("#audioToggle")?.addEventListener("click", () => {
+    audioEnabled = !audioEnabled;
+    localStorage.setItem("inclulearnAudioEnabled", String(audioEnabled));
+    if (!audioEnabled && "speechSynthesis" in window) speechSynthesis.cancel();
+    updateAudioToggle();
+    toast(audioEnabled ? "Аудио қосылды" : "Аудио өшірілді");
+  });
   $("#speak")?.addEventListener("click", () => {
-    if (!("speechSynthesis" in window)) return toast(state.language === "kk" ? "Бұл браузерде аудио қолжетімсіз." : state.language === "ru" ? "Аудио недоступно в этом браузере." : "Audio is not available in this browser.");
+    if (!audioEnabled) return toast("Алдымен 🔇 батырмасымен аудионы қосыңыз.");
+    if (!("speechSynthesis" in window) || typeof SpeechSynthesisUtterance === "undefined") return toast(state.language === "kk" ? "Бұл браузерде дыбыстық оқу қолжетімсіз." : state.language === "ru" ? "В этом браузере нет озвучивания." : "Speech is not available in this browser.");
+    const start = () => {
+      speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(audioText);
+      utterance.lang = audioLang;
+      utterance.rate = 0.9;
+      utterance.pitch = 1;
+      const voice = chooseVoice();
+      if (voice) utterance.voice = voice;
+      utterance.onstart = () => { if($("#speak")) $("#speak").textContent="▶"; };
+      utterance.onend = () => { if($("#speak")) $("#speak").textContent="▶"; };
+      utterance.onerror = () => toast("Аудионы іске қосу мүмкін болмады. Қайтадан ▶ басыңыз.");
+      speechSynthesis.resume();
+      speechSynthesis.speak(utterance);
+      toast(state.language === "kk" ? "Аудио ойнатылып жатыр" : state.language === "ru" ? "Аудио воспроизводится" : "Audio is playing");
+    };
+    if (speechSynthesis.getVoices().length) start();
+    else { speechSynthesis.onvoiceschanged = () => { speechSynthesis.onvoiceschanged = null; start(); }; setTimeout(start, 250); }
+  });
+  $("#pauseSpeak")?.addEventListener("click", () => {
+    if (!("speechSynthesis" in window)) return;
+    if (speechSynthesis.speaking && !speechSynthesis.paused) speechSynthesis.pause();
+    else if (speechSynthesis.paused) speechSynthesis.resume();
+  });
+  $("#stopSpeak")?.addEventListener("click", () => {
+    if (!("speechSynthesis" in window)) return;
     speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(state.result.audio || "");
-    utterance.lang = state.language === "ru" ? "ru-RU" : state.language === "en" ? "en-US" : "kk-KZ";
-    speechSynthesis.speak(utterance);
-    toast(state.language === "kk" ? "Аудио ойнатылып жатыр" : state.language === "ru" ? "Аудио воспроизводится" : "Audio is playing");
+    if($("#speak")) $("#speak").textContent="▶";
   });
   renderProgress(data.progress || state.progress);
   renderPractice();
