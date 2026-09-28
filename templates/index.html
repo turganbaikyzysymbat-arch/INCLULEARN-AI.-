@@ -8,6 +8,20 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
+  <div id="authScreen" class="auth-screen">
+    <div class="auth-card">
+      <div class="auth-brand">✦ <b>IncluLearn AI</b></div>
+      <h1 id="authTitle">Кіру</h1>
+      <p id="authHint">Оқу платформасына кіріңіз</p>
+      <div class="auth-tabs"><button id="loginTab" class="active">Кіру</button><button id="registerTab">Тіркелу</button></div>
+      <div id="registerFields" class="hidden"><input id="authName" placeholder="Аты-жөні"><select id="authRole"><option value="student">Оқушы</option><option value="teacher">Мұғалім</option></select><input id="authSubject" class="hidden" placeholder="Пәні"></div>
+      <input id="authEmail" type="email" placeholder="Email">
+      <input id="authPassword" type="password" placeholder="Пароль (кемінде 6 таңба)">
+      <button id="authSubmit" class="auth-submit">Кіру</button>
+      <div id="authError" class="auth-error"></div>
+    </div>
+  </div>
+
   <div class="noise"></div>
   <div class="shell">
     <aside class="sidebar">
@@ -46,7 +60,12 @@
         </div>
       </header>
 
-      <section id="dashboardView" class="view active">
+      <section id="dashboardView" class="view active"><div id="roleDashboard" class="role-dashboard hidden">
+  <div class="role-head"><div><span class="kicker"><span></span> PERSONAL DASHBOARD</span><h2 id="welcomeUser">Сәлем!</h2><p id="roleText"></p></div><button id="logoutButton" class="logout-button">Шығу</button></div>
+  <div id="studentDashboard" class="role-content hidden"><div class="stat-grid"><div><b id="statQuiz">0</b><small>Quiz саны</small></div><div><b id="statAverage">0%</b><small>Орташа нәтиже</small></div></div><div class="join-row"><input id="classCode" placeholder="Сынып коды"><button id="joinClass">Сыныпқа қосылу</button></div><div id="studentClasses"></div></div>
+  <div id="teacherDashboard" class="role-content hidden"><div class="teacher-create"><input id="className" placeholder="Сынып атауы"><input id="classCodeCreate" placeholder="Код (мысалы INF-2026)"><button id="createClass">Сынып құру</button></div><div id="teacherClasses"></div></div>
+</div>
+
         <div class="hero">
           <div><div class="kicker"><span></span> INCLULEARN AI · INCLUSIVE EDUCATION</div>
             <h1>Әр оқушыға<br><em>өз жолы.</em></h1>
@@ -86,93 +105,14 @@
         </div>
 
         <section id="outputSection" class="output-section hidden">
+          <div class="output-heading"><div><div class="kicker"><span></span> AYLA AI · <span data-i18n="result">НӘТИЖЕ</span></div><h2 data-i18n="materialReady">Материал дайын</h2><p id="outputMeta"></p></div><div class="output-actions"><button id="printButton" data-i18n="print">⤓ Басып шығару</button><button id="copyButton" data-i18n="copyAll">▣ Барлығын көшіру</button></div></div>
+          <div id="progressBar" class="progress-card hidden"><div><b>Оқу прогресі</b><small id="progressText">0% аяқталды</small></div><div class="progress-track"><span id="progressFill"></span></div></div>
+          <div id="tabs" class="tabs"></div><div id="result" class="result"></div>
+          <div id="practiceCard" class="practice-card hidden"></div>
+          <div class="ask-card"><div class="ask-title"><div class="ask-avatar">✦</div><div><b data-i18n="askAyla">Ayla AI-ға сұрақ қойыңыз</b><small data-i18n="answerFromMaterial">Жауап жүктелген материалға сүйеніп беріледі</small></div></div><div class="ask-row"><input id="questionInput" data-i18n-placeholder="questionPlaceholder" placeholder="Мысалы: Бұл тақырыптың негізгі идеясы қандай?"><button id="askButton" data-i18n="getAnswer">Жауап алу <span>→</span></button></div><div id="answer" class="answer hidden"></div></div>
+        </section>
+      </section>
 
-    <div class="output-heading">
-        <div>
-            <div class="kicker">
-                <span></span> AYLA AI ·
-                <span data-i18n="result">НӘТИЖЕ</span>
-            </div>
-
-            <h2 data-i18n="materialReady">Материал дайын</h2>
-            <p id="outputMeta"></p>
-        </div>
-
-        <div class="output-actions">
-            <button id="printButton" data-i18n="print">
-                ⤓ Басып шығару
-            </button>
-
-            <button id="copyButton" data-i18n="copyAll">
-                ▣ Барлығын көшіру
-            </button>
-        </div>
-    </div>
-
-
-    <div id="progressBar" class="progress-card hidden">
-        <div>
-            <b>Оқу прогресі</b>
-            <small id="progressText">0% аяқталды</small>
-        </div>
-
-        <div class="progress-track">
-            <span id="progressFill"></span>
-        </div>
-    </div>
-
-
-    <div id="tabs" class="tabs"></div>
-
-    <div id="result" class="result"></div>
-
-
-    <!-- PRACTICE -->
-    <div id="practiceCard" class="practice-card hidden"></div>
-
-
-    <!-- AI QUIZ -->
-    <div id="quizCard" class="quiz-card hidden"></div>
-
-
-    <!-- ASK AYLA -->
-    <div class="ask-card">
-
-        <div class="ask-title">
-            <div class="ask-avatar">✦</div>
-
-            <div>
-                <b data-i18n="askAyla">
-                    Ayla AI-ға сұрақ қойыңыз
-                </b>
-
-                <small data-i18n="answerFromMaterial">
-                    Жауап жүктелген материалға сүйеніп беріледі
-                </small>
-            </div>
-        </div>
-
-
-        <div class="ask-row">
-
-            <input
-                id="questionInput"
-                data-i18n-placeholder="questionPlaceholder"
-                placeholder="Мысалы: Бұл тақырыптың негізгі идеясы қандай?"
-            >
-
-            <button id="askButton" data-i18n="getAnswer">
-                Жауап алу <span>→</span>
-            </button>
-
-        </div>
-
-
-        <div id="answer" class="answer hidden"></div>
-
-    </div>
-
-</section>
       <section id="materialsView" class="view hidden">
         <div class="section-title"><div class="kicker"><span></span> LIBRARY</div><h1 data-i18n="myMaterials">Материалдарым</h1><p data-i18n="libraryDescription">Материалдарды іздеп, ашып немесе қажет болмаса өшіріңіз.</p></div>
         <div class="library-tools"><input id="searchMaterials" data-i18n-placeholder="searchPlaceholder" placeholder="Материал іздеу..."><button id="refreshMaterials" data-i18n="refresh">↻ Жаңарту</button></div>
@@ -188,7 +128,7 @@
     </main>
   </div>
   <div id="toast" class="toast" role="status"></div>
-<script src="{{ url_for('static', filename='i18n.js') }}?v=2"></script>
-<script src="{{ url_for('static', filename='app.js') }}?v=2"></script>
+  <script src="{{ url_for('static', filename='i18n.js') }}"></script>
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
 </body>
 </html>
