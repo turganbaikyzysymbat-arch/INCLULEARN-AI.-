@@ -8,7 +8,8 @@ from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, session
+from werkzeug.security import generate_password_hash, check_password_hash
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -18,6 +19,7 @@ DB_DIR.mkdir(exist_ok=True)
 
 app = Flask(__name__, template_folder="templates", static_folder="static")
 app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024
+app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "inclulearn-dev-secret-change-me")
 
 STOP_WORDS = set(
     "және мен бұл үшін туралы немесе бір оның болып арқылы да де әрі қалай деген "
@@ -79,6 +81,41 @@ def init_db():
                 completed INTEGER NOT NULL DEFAULT 0,
                 score INTEGER NOT NULL DEFAULT 0,
                 updated_at TEXT NOT NULL,
+                FOREIGN KEY(material_id) REFERENCES materials(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                email TEXT NOT NULL UNIQUE,
+                password_hash TEXT NOT NULL,
+                role TEXT NOT NULL CHECK(role IN ('student','teacher')),
+                subject TEXT,
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS classes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                teacher_id INTEGER NOT NULL,
+                name TEXT NOT NULL,
+                code TEXT NOT NULL UNIQUE,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(teacher_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS class_members (
+                class_id INTEGER NOT NULL,
+                student_id INTEGER NOT NULL,
+                joined_at TEXT NOT NULL,
+                PRIMARY KEY(class_id, student_id),
+                FOREIGN KEY(class_id) REFERENCES classes(id) ON DELETE CASCADE,
+                FOREIGN KEY(student_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS quiz_results (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                student_id INTEGER NOT NULL,
+                material_id INTEGER NOT NULL,
+                score INTEGER NOT NULL,
+                total INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(student_id) REFERENCES users(id) ON DELETE CASCADE,
                 FOREIGN KEY(material_id) REFERENCES materials(id) ON DELETE CASCADE
             );
             """
@@ -275,7 +312,6 @@ def local_answer(question, source):
         f"• {sentence}" for sentence in matched
     )
 
-
 def local_quiz(source, language="kk"):
     sentences = [
         sentence.strip()
@@ -284,7 +320,7 @@ def local_quiz(source, language="kk"):
     ]
 
     if len(sentences) < 5:
-        return []
+        return [], "local"
 
     questions = []
 
@@ -306,7 +342,7 @@ def local_quiz(source, language="kk"):
             "correct": 0
         })
 
-    return questions
+    return questions, "local"
 
 
 def create_quiz(source, language="kk"):
@@ -349,6 +385,7 @@ Material:
             pass
 
     return local_quiz(source, language), "local"
+    
 
 
 def material_json(row, adaptation=None, progress=None, preview=False):
@@ -361,6 +398,144 @@ def material_json(row, adaptation=None, progress=None, preview=False):
         "score": 0,
     }
     return result
+
+
+@app.post("/api/auth/register")
+def register():
+    body = request.get_json(silent=True) or {}
+    name = clean_text(body.get("name"))
+    email = clean_text(body.get("email")).lower()
+    password = str(body.get("password") or "")
+    role = body.get("role") or "student"
+    subject = clean_text(body.get("subject"))
+    if not name or not email or len(password) < 6 or role not in {"student", "teacher"}:
+        return jsonify({"error": "Аты, email, рөл және кемінде 6 таңбалы пароль қажет."}), 400
+    try:
+        with db() as connection:
+            cur = connection.execute(
+                "INSERT INTO users(name,email,password_hash,role,subject,created_at) VALUES(?,?,?,?,?,?)",
+                (name, email, generate_password_hash(password), role, subject, now()),
+            )
+            user_id = cur.lastrowid
+        session["user_id"] = user_id
+        session["role"] = role
+        return jsonify({"ok": True, "user": {"id": user_id, "name": name, "email": email, "role": role, "subject": subject}}), 201
+    except sqlite3.IntegrityError:
+        return jsonify({"error": "Бұл email бұрын тіркелген."}), 409
+
+
+@app.post("/api/auth/login")
+def login():
+    body = request.get_json(silent=True) or {}
+    email = clean_text(body.get("email")).lower()
+    password = str(body.get("password") or "")
+    with db() as connection:
+        user = connection.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+    if not user or not check_password_hash(user["password_hash"], password):
+        return jsonify({"error": "Email немесе пароль дұрыс емес."}), 401
+    session["user_id"] = user["id"]
+    session["role"] = user["role"]
+    return jsonify({"ok": True, "user": {"id": user["id"], "name": user["name"], "email": user["email"], "role": user["role"], "subject": user["subject"]}})
+
+
+@app.post("/api/auth/logout")
+def logout():
+    session.clear()
+    return jsonify({"ok": True})
+
+
+@app.get("/api/auth/me")
+def me():
+    user_id = session.get("user_id")
+    if not user_id:
+        return jsonify({"authenticated": False})
+    with db() as connection:
+        user = connection.execute("SELECT id,name,email,role,subject FROM users WHERE id = ?", (user_id,)).fetchone()
+    if not user:
+        session.clear()
+        return jsonify({"authenticated": False})
+    return jsonify({"authenticated": True, "user": dict(user)})
+
+
+def current_user():
+    user_id = session.get("user_id")
+    if not user_id:
+        return None
+    with db() as connection:
+        return connection.execute("SELECT id,name,email,role,subject FROM users WHERE id = ?", (user_id,)).fetchone()
+
+
+@app.get("/api/dashboard")
+def dashboard():
+    user = current_user()
+    if not user:
+        return jsonify({"error": "Кіру қажет."}), 401
+    with db() as connection:
+        if user["role"] == "student":
+            results = connection.execute("SELECT COUNT(*) total, COALESCE(AVG(score * 100.0 / NULLIF(total,0)),0) avg_score FROM quiz_results WHERE student_id = ?", (user["id"],)).fetchone()
+            classes = connection.execute("SELECT c.id,c.name,c.code FROM classes c JOIN class_members m ON m.class_id=c.id WHERE m.student_id=? ORDER BY c.created_at DESC", (user["id"],)).fetchall()
+            return jsonify({"role":"student","quiz_count":results["total"],"average_score":round(results["avg_score"] or 0),"classes":[dict(x) for x in classes]})
+        classes = connection.execute("SELECT c.id,c.name,c.code,(SELECT COUNT(*) FROM class_members m WHERE m.class_id=c.id) students FROM classes c WHERE c.teacher_id=? ORDER BY c.created_at DESC", (user["id"],)).fetchall()
+        return jsonify({"role":"teacher","classes":[dict(x) for x in classes]})
+
+
+@app.post("/api/classes")
+def create_class():
+    user = current_user()
+    if not user or user["role"] != "teacher":
+        return jsonify({"error":"Мұғалім ретінде кіру қажет."}), 403
+    body = request.get_json(silent=True) or {}
+    name = clean_text(body.get("name"))
+    code = re.sub(r"[^A-Z0-9]", "", str(body.get("code") or "").upper()) or os.urandom(3).hex().upper()
+    if not name:
+        return jsonify({"error":"Сынып атауын енгізіңіз."}), 400
+    try:
+        with db() as connection:
+            cur=connection.execute("INSERT INTO classes(teacher_id,name,code,created_at) VALUES(?,?,?,?)",(user["id"],name,code,now()))
+            cid=cur.lastrowid
+        return jsonify({"id":cid,"name":name,"code":code}),201
+    except sqlite3.IntegrityError:
+        return jsonify({"error":"Бұл код қолданылып қойған."}),409
+
+
+@app.post("/api/classes/join")
+def join_class():
+    user=current_user()
+    if not user or user["role"] != "student":
+        return jsonify({"error":"Оқушы ретінде кіру қажет."}),403
+    body=request.get_json(silent=True) or {}
+    code=clean_text(body.get("code")).upper()
+    with db() as connection:
+        cls=connection.execute("SELECT * FROM classes WHERE code=?",(code,)).fetchone()
+        if not cls:
+            return jsonify({"error":"Сынып коды табылмады."}),404
+        connection.execute("INSERT OR IGNORE INTO class_members(class_id,student_id,joined_at) VALUES(?,?,?)",(cls["id"],user["id"],now()))
+    return jsonify({"ok":True,"class":{"id":cls["id"],"name":cls["name"],"code":cls["code"]}})
+
+
+@app.get("/api/classes/<int:class_id>/students")
+def class_students(class_id):
+    user=current_user()
+    if not user or user["role"] != "teacher":
+        return jsonify({"error":"Рұқсат жоқ."}),403
+    with db() as connection:
+        owner=connection.execute("SELECT id FROM classes WHERE id=? AND teacher_id=?",(class_id,user["id"])).fetchone()
+        if not owner: return jsonify({"error":"Сынып табылмады."}),404
+        rows=connection.execute("SELECT u.id,u.name,u.email FROM users u JOIN class_members m ON m.student_id=u.id WHERE m.class_id=? ORDER BY u.name",(class_id,)).fetchall()
+    return jsonify({"students":[dict(x) for x in rows]})
+
+
+@app.post("/api/quiz-results")
+def save_quiz_result():
+    user=current_user()
+    if not user or user["role"] != "student": return jsonify({"error":"Оқушы ретінде кіру қажет."}),403
+    body=request.get_json(silent=True) or {}
+    material_id=int(body.get("material_id",0)); score=int(body.get("score",0)); total=max(1,int(body.get("total",1)))
+    with db() as connection:
+        exists=connection.execute("SELECT id FROM materials WHERE id=?",(material_id,)).fetchone()
+        if not exists: return jsonify({"error":"Материал табылмады."}),404
+        connection.execute("INSERT INTO quiz_results(student_id,material_id,score,total,created_at) VALUES(?,?,?,?,?)",(user["id"],material_id,score,total,now()))
+    return jsonify({"ok":True,"score":score,"total":total})
 
 
 @app.get("/")
@@ -619,3 +794,4 @@ init_db()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.getenv("PORT", "3000")), debug=False)
+
