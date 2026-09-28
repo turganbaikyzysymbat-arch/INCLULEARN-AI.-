@@ -343,13 +343,12 @@ Material:
             data = json.loads(answer)
 
             if isinstance(data, dict) and isinstance(data.get("quiz"), list):
-                return data["quiz"][:5]
+                return data["quiz"][:5], "ai"
 
         except Exception:
             pass
 
-    return local_quiz(source, language)
-    
+    return local_quiz(source, language), "local"
 
 
 def material_json(row, adaptation=None, progress=None, preview=False):
@@ -467,8 +466,6 @@ def generate_material_quiz(material_id):
     })
 
 
-@app.post("/api/materials/<int:material_id>/progress")
-def save_progress(material_id):
 @app.post("/api/materials")
 def create_material():
     try:
