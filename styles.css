@@ -87,3 +87,75 @@ body.high-contrast { filter: contrast(1.16); }.high-contrast .result-body,.high-
 .audio-controls{display:flex;gap:6px;align-items:center}.audio-play,.audio-control{border:0;cursor:pointer}.audio-play{width:44px;height:44px;border-radius:50%;background:var(--teal);color:#fff;font-weight:800}.audio-control{width:34px;height:34px;border-radius:9px;background:#dff3ee;color:#166f65}.audio-copy{min-width:160px}.mission-admin-card{margin:14px 0}.mission-form{display:grid;grid-template-columns:1fr 1fr;gap:9px}.mission-form select,.mission-form input,.mission-form textarea{border:1px solid #d5e1e3;border-radius:9px;padding:11px;background:#fff;color:#20343a}.mission-form textarea{grid-column:1/-1;min-height:78px;resize:vertical}.mission-form button{grid-column:1/-1;min-height:44px}.mission-admin-list{display:grid;gap:8px;margin-top:14px}.mission-admin-item{padding:12px;border:1px solid var(--line);border-radius:12px;background:#fbfdfd}.mission-admin-item b,.mission-admin-item small{display:block}.mission-admin-item small{color:#7d9195;font-size:10px;margin-top:3px}.mission-admin-item p{margin:7px 0 0;color:#536b70;font-size:12px;line-height:1.5}@media(max-width:800px){.mission-form{grid-template-columns:1fr}.mission-form textarea,.mission-form button{grid-column:auto}}
 
 .audio-controls button{cursor:pointer}.audio-control{min-width:38px}.audio-control:hover{transform:translateY(-1px)}
+
+/* ===== FINAL STUDENT EXPERIENCE ===== */
+body.student-mode{background:#f5f7fb}
+body.student-mode .sidebar{background:linear-gradient(180deg,#101d31 0%,#142844 55%,#172d4b 100%);border-right:0;color:#fff}
+body.student-mode .sidebar .logo b,body.student-mode .sidebar .logo small{color:#fff}
+body.student-mode .sidebar .logo small{opacity:.58}
+body.student-mode .ai-profile{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.09);box-shadow:none}
+body.student-mode .ai-profile strong{color:#fff}.student-mode .ai-profile small{color:rgba(255,255,255,.55)}
+body.student-mode .nav-link{color:rgba(255,255,255,.62);border:1px solid transparent}
+body.student-mode .nav-link:hover{background:rgba(255,255,255,.07);color:#fff}
+body.student-mode .nav-link.active{background:linear-gradient(90deg,rgba(104,211,193,.18),rgba(104,211,193,.05));color:#fff;border-color:rgba(104,211,193,.16);box-shadow:inset 3px 0 #74e0cd}
+body.student-mode .sidebar-footer .secure{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.08);color:#fff}
+body.student-mode .sidebar-footer>small{color:rgba(255,255,255,.38)}
+body.student-mode .role-head{padding:14px 4px 22px}
+body.student-mode .role-head .kicker{color:#557083;font-size:10px;letter-spacing:2.2px}
+body.student-mode .role-head .kicker>span:first-child{background:#65cfc0}
+body.student-mode .role-head h2{font-size:38px;line-height:1.08;margin:9px 0 7px;color:#13263d}
+body.student-mode .role-head p{max-width:650px;color:#6e8291;font-size:14px}
+body.student-mode .logout-button{border-radius:12px;background:#fff;border:1px solid #e5eaf1;color:#5d6d7e;padding:10px 15px}
+body.student-mode .student-hero-card{min-height:255px;padding:34px 38px;border-radius:30px;background:radial-gradient(circle at 85% 25%,rgba(120,225,208,.28),transparent 22%),linear-gradient(125deg,#12243a 0%,#19395a 56%,#214c5d 100%);box-shadow:0 22px 55px rgba(25,53,82,.17)}
+body.student-mode .student-hero-card:before{content:"";position:absolute;right:60px;bottom:-85px;width:260px;height:260px;border:1px solid rgba(255,255,255,.13);border-radius:50%;box-shadow:0 0 0 42px rgba(255,255,255,.025),0 0 0 84px rgba(255,255,255,.018)}
+body.student-mode .student-hero-card:after{right:-65px;top:-120px;width:300px;height:300px;border-color:rgba(255,255,255,.1)}
+body.student-mode .student-hero-card h3{font-size:31px;max-width:650px;line-height:1.15}
+body.student-mode .student-hero-card p{font-size:14px;max-width:610px;color:rgba(255,255,255,.67)}
+body.student-mode .student-actions{margin-top:23px}
+body.student-mode .dash-primary{padding:13px 19px;border-radius:13px;background:#79e0ce;box-shadow:0 8px 20px rgba(74,211,190,.18)}
+body.student-mode .dash-ghost{padding:13px 18px;border-radius:13px;background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.16)}
+body.student-mode .streak-orb{width:150px;height:150px;min-width:150px;background:linear-gradient(145deg,rgba(255,255,255,.14),rgba(255,255,255,.05));border:1px solid rgba(255,255,255,.17);box-shadow:0 15px 40px rgba(0,0,0,.1)}
+body.student-mode .streak-orb b{font-size:45px}
+body.student-mode .student-stats{gap:14px;margin:16px 0}
+body.student-mode .student-stats>div{border:1px solid #e7ebf2;background:#fff;border-radius:19px;padding:18px 20px;box-shadow:0 9px 28px rgba(22,42,66,.045)}
+body.student-mode .student-stats>div:first-child{background:linear-gradient(145deg,#fff,#f3fbf9)}
+body.student-mode .student-stats>div:nth-child(2){background:linear-gradient(145deg,#fff,#f5f4ff)}
+body.student-mode .student-stats>div:nth-child(3){background:linear-gradient(145deg,#fff,#fff8f0)}
+body.student-mode .stat-icon{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:#eef9f7;margin-bottom:12px}
+body.student-mode .student-stats b{font-size:28px;color:#172b42;letter-spacing:-.7px}
+body.student-mode .student-stats small{color:#7e8f9e}
+body.student-mode .student-grid{gap:16px;margin-top:16px}
+body.student-mode .dash-card{border:1px solid #e7ebf2;border-radius:21px;box-shadow:0 9px 28px rgba(22,42,66,.045);padding:21px}
+body.student-mode .dash-card:hover{transform:translateY(-2px);box-shadow:0 14px 32px rgba(22,42,66,.07);transition:.2s}
+body.student-mode .card-title>span{background:#eff7ff;color:#547da5}
+body.student-mode .mission-card{background:linear-gradient(145deg,#ffffff,#f3fbfa)}
+body.student-mode .mission-card .card-title>span{background:#e7f8f4;color:#168a79}
+body.student-mode .mission-track{height:9px;background:#e7efee}
+body.student-mode .mission-track span{background:linear-gradient(90deg,#35bda8,#7ae0ce)}
+body.student-mode .mission-meta button{padding:7px 11px;border-radius:9px;background:#eaf8f5}
+body.student-mode .badges-card{background:linear-gradient(145deg,#ffffff,#f7f5ff)}
+body.student-mode .badge-item{background:#fff;border-color:#e8e6f3;border-radius:14px}
+body.student-mode .badge-item span{color:#6b63b6}
+body.student-mode .join-row input,body.student-mode .join-row button{height:45px;border-radius:11px}
+body.student-mode .join-row input{background:#f8fafc;border-color:#e2e8f0}
+body.student-mode .join-row button{background:#203b5a}
+body.student-mode .recent-item strong{padding:6px 9px;border-radius:8px;background:#edf8f5}
+body.student-mode .topbar{background:rgba(255,255,255,.82);backdrop-filter:blur(16px);border-bottom:1px solid #e8edf3}
+body.student-mode .profile-button{background:linear-gradient(145deg,#69d8c6,#4bb5c2);color:#fff;border:0;box-shadow:0 5px 14px rgba(68,182,177,.2)}
+body.student-mode .db-status{background:#f0f9f7;border-color:#dcefe9;color:#4c766f}
+body.student-mode .main{background:radial-gradient(circle at 92% 0%,rgba(105,216,198,.08),transparent 22%),#f5f7fb}
+
+/* Student-only decorative learning rail */
+body.student-mode .student-hero-card .mini-label{color:#86e4d3}
+body.student-mode .student-hero-card .streak-orb small{letter-spacing:.2px}
+body.student-mode #studentDashboard{max-width:1180px}
+
+/* Teacher remains professional and intentionally different */
+body.teacher-mode .student-hero-card{border-radius:18px}
+body.teacher-mode .role-head h2{font-size:32px}
+body.teacher-mode .teacher-hero-card{background:linear-gradient(135deg,#172a35,#23454d)}
+body.teacher-mode .teacher-class-card{transition:.2s}
+body.teacher-mode .teacher-class-card:hover{transform:translateY(-2px);box-shadow:0 10px 25px rgba(16,37,45,.06)}
+
+@media(max-width:900px){body.student-mode .student-hero-card{padding:27px}.student-mode .student-hero-card h3{font-size:25px}.student-mode .streak-orb{width:110px;height:110px;min-width:110px}.student-mode .streak-orb b{font-size:34px}}
+@media(max-width:650px){body.student-mode .student-hero-card{display:block}.student-mode .streak-orb{margin-top:20px}.student-mode .role-head h2{font-size:31px}.student-mode .student-actions{flex-wrap:wrap}.student-mode .dash-primary,.student-mode .dash-ghost{width:100%}}
