@@ -5,7 +5,7 @@ import re
 import sqlite3
 import urllib.request
 from contextlib import contextmanager
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, session
@@ -135,6 +135,51 @@ def init_db():
                 completed_at TEXT NOT NULL,
                 PRIMARY KEY(mission_id, student_id),
                 FOREIGN KEY(mission_id) REFERENCES missions(id) ON DELETE CASCADE,
+                FOREIGN KEY(student_id) REFERENCES users(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS flashcards (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                student_id INTEGER NOT NULL,
+                material_id INTEGER NOT NULL,
+                front TEXT NOT NULL,
+                back TEXT NOT NULL,
+                difficulty TEXT DEFAULT 'new',
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(student_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY(material_id) REFERENCES materials(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS mistakes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                student_id INTEGER NOT NULL,
+                material_id INTEGER NOT NULL,
+                question TEXT NOT NULL,
+                wrong_answer TEXT NOT NULL,
+                correct_answer TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(student_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY(material_id) REFERENCES materials(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS assignments (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                teacher_id INTEGER NOT NULL,
+                class_id INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT NOT NULL,
+                due_date TEXT NOT NULL,
+                points INTEGER NOT NULL DEFAULT 100,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY(teacher_id) REFERENCES users(id) ON DELETE CASCADE,
+                FOREIGN KEY(class_id) REFERENCES classes(id) ON DELETE CASCADE
+            );
+            CREATE TABLE IF NOT EXISTS assignment_submissions (
+                assignment_id INTEGER NOT NULL,
+                student_id INTEGER NOT NULL,
+                answer TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'submitted',
+                score INTEGER,
+                submitted_at TEXT NOT NULL,
+                PRIMARY KEY(assignment_id, student_id),
+                FOREIGN KEY(assignment_id) REFERENCES assignments(id) ON DELETE CASCADE,
                 FOREIGN KEY(student_id) REFERENCES users(id) ON DELETE CASCADE
             );
             """
@@ -563,6 +608,34 @@ def dashboard():
             streak = _student_streak(connection, user["id"])
             badges = _student_badges(quiz_count, average, streak)
             today = now()[:10]
+            # Extra student dashboard intelligence: weekly activity, XP, deadlines and weak area.
+            weekly = []
+            for offset in range(6, -1, -1):
+                day = (datetime.fromisoformat(today) - timedelta(days=offset)).date().isoformat()
+                row = connection.execute(
+                    "SELECT COUNT(*) n, COALESCE(AVG(score * 100.0 / NULLIF(total,0)),0) avg_score "
+                    "FROM quiz_results WHERE student_id=? AND substr(created_at,1,10)=?",
+                    (user["id"], day),
+                ).fetchone()
+                weekly.append({"day": day, "count": int(row["n"] or 0), "average": round(row["avg_score"] or 0)})
+            assignment_rows = connection.execute(
+                "SELECT a.id,a.title,a.description,a.due_date,a.points,c.name class_name, "
+                "EXISTS(SELECT 1 FROM assignment_submissions s WHERE s.assignment_id=a.id AND s.student_id=?) submitted "
+                "FROM assignments a JOIN classes c ON c.id=a.class_id JOIN class_members cm ON cm.class_id=c.id "
+                "WHERE cm.student_id=? ORDER BY a.due_date ASC LIMIT 5",
+                (user["id"], user["id"]),
+            ).fetchall()
+            materials_count = int(connection.execute("SELECT COUNT(*) n FROM materials").fetchone()["n"] or 0)
+            mistake_row = connection.execute(
+                "SELECT m.title, COUNT(*) n FROM mistakes x JOIN materials m ON m.id=x.material_id "
+                "WHERE x.student_id=? GROUP BY x.material_id ORDER BY n DESC LIMIT 1",
+                (user["id"],),
+            ).fetchone()
+            xp = quiz_count * 50 + streak * 10 + len(badges) * 25 + min(100, average)
+            if xp >= 1000: level_name = "Master"
+            elif xp >= 600: level_name = "Advanced"
+            elif xp >= 300: level_name = "Explorer"
+            else: level_name = "Starter"
             teacher_mission = connection.execute(
                 "SELECT m.id,m.title,m.description,m.due_date, "
                 "EXISTS(SELECT 1 FROM mission_completions mc WHERE mc.mission_id=m.id AND mc.student_id=?) completed "
@@ -600,6 +673,12 @@ def dashboard():
                 "mission": mission,
                 "classes": [dict(x) for x in classes],
                 "recent": [dict(x) for x in recent],
+                "weekly": weekly,
+                "assignments": [dict(x) for x in assignment_rows],
+                "materials_count": materials_count,
+                "xp": xp,
+                "level_name": level_name,
+                "weak_topic": dict(mistake_row) if mistake_row else None,
             })
 
         classes = connection.execute(
@@ -732,6 +811,138 @@ def complete_mission(mission_id):
             (mission_id, user["id"], now()),
         )
     return jsonify({"ok": True})
+
+
+
+def _require_student():
+    user = current_user()
+    if not user or user["role"] != "student":
+        return None, (jsonify({"error": "Оқушы ретінде кіру қажет."}), 403)
+    return user, None
+
+
+@app.get("/api/student/learning-hub")
+def learning_hub():
+    user, error = _require_student()
+    if error:
+        return error
+    with db() as connection:
+        mats = connection.execute("SELECT id,title,source_text FROM materials ORDER BY updated_at DESC LIMIT 12").fetchall()
+        cards = connection.execute("SELECT f.*,m.title material_title FROM flashcards f JOIN materials m ON m.id=f.material_id WHERE f.student_id=? ORDER BY f.id DESC LIMIT 40", (user["id"],)).fetchall()
+        mistakes = connection.execute("SELECT x.*,m.title material_title FROM mistakes x JOIN materials m ON m.id=x.material_id WHERE x.student_id=? ORDER BY x.id DESC LIMIT 20", (user["id"],)).fetchall()
+        assignments = connection.execute("SELECT a.*,c.name class_name, EXISTS(SELECT 1 FROM assignment_submissions s WHERE s.assignment_id=a.id AND s.student_id=?) submitted FROM assignments a JOIN classes c ON c.id=a.class_id JOIN class_members cm ON cm.class_id=c.id WHERE cm.student_id=? ORDER BY a.due_date ASC LIMIT 12", (user["id"],user["id"])).fetchall()
+    return jsonify({"materials":[dict(x) for x in mats],"flashcards":[dict(x) for x in cards],"mistakes":[dict(x) for x in mistakes],"assignments":[dict(x) for x in assignments]})
+
+
+@app.post("/api/student/flashcards/generate/<int:material_id>")
+def generate_flashcards(material_id):
+    user, error = _require_student()
+    if error:
+        return error
+    with db() as connection:
+        material = connection.execute("SELECT * FROM materials WHERE id=?", (material_id,)).fetchone()
+        if not material:
+            return jsonify({"error":"Материал табылмады."}),404
+        existing = connection.execute("SELECT COUNT(*) n FROM flashcards WHERE student_id=? AND material_id=?",(user["id"],material_id)).fetchone()["n"]
+        if existing:
+            rows=connection.execute("SELECT * FROM flashcards WHERE student_id=? AND material_id=? ORDER BY id DESC",(user["id"],material_id)).fetchall()
+            return jsonify({"flashcards":[dict(x) for x in rows]})
+        sentences=[x for x in split_sentences(material["source_text"]) if len(x)>30][:8]
+        terms=keywords(material["source_text"],8)
+        cards=[]
+        for i,term in enumerate(terms[:8]):
+            sentence=next((x for x in sentences if term.lower() in x.lower()), material["source_text"][:260])
+            cards.append((user["id"],material_id,f"{term.capitalize()} дегеніміз не?",sentence,"new",now()))
+        connection.executemany("INSERT INTO flashcards(student_id,material_id,front,back,difficulty,created_at) VALUES(?,?,?,?,?,?)",cards)
+        rows=connection.execute("SELECT * FROM flashcards WHERE student_id=? AND material_id=? ORDER BY id DESC",(user["id"],material_id)).fetchall()
+    return jsonify({"flashcards":[dict(x) for x in rows]})
+
+
+@app.post("/api/student/flashcards/<int:card_id>/rate")
+def rate_flashcard(card_id):
+    user,error=_require_student()
+    if error:return error
+    difficulty=clean_text((request.get_json(silent=True) or {}).get("difficulty")) or "good"
+    if difficulty not in {"again","hard","good","easy"}: difficulty="good"
+    with db() as connection:
+        connection.execute("UPDATE flashcards SET difficulty=? WHERE id=? AND student_id=?",(difficulty,card_id,user["id"]))
+    return jsonify({"ok":True,"difficulty":difficulty})
+
+
+@app.post("/api/student/mistakes")
+def save_mistake():
+    user,error=_require_student()
+    if error:return error
+    body=request.get_json(silent=True) or {}
+    try: material_id=int(body.get("material_id",0))
+    except: material_id=0
+    fields=[clean_text(body.get(k)) for k in ("question","wrong_answer","correct_answer")]
+    if not material_id or not all(fields): return jsonify({"error":"Қате сұрақтың деректері толық емес."}),400
+    with db() as connection:
+        connection.execute("INSERT INTO mistakes(student_id,material_id,question,wrong_answer,correct_answer,created_at) VALUES(?,?,?,?,?,?)",(user["id"],material_id,*fields,now()))
+    return jsonify({"ok":True})
+
+
+@app.get("/api/student/study-plan")
+def study_plan():
+    user,error=_require_student()
+    if error:return error
+    days=max(3,min(14,int(request.args.get("days",7))))
+    with db() as connection:
+        mats=connection.execute("SELECT id,title FROM materials ORDER BY updated_at DESC LIMIT 6").fetchall()
+    names=[x["title"] for x in mats] or ["Негізгі оқу материалы"]
+    plan=[]
+    for i in range(1,days+1):
+        topic=names[(i-1)%len(names)]
+        plan.append({"day":i,"topic":topic,"tasks":["Материалды 15 минут оқу","5 flashcard қайталау","5 сұрақтық Quiz орындау"]})
+    return jsonify({"days":days,"plan":plan})
+
+
+@app.get("/api/student/accessibility")
+def get_accessibility():
+    return jsonify({"ok":True,"client_side":True,"options":["font_size","high_contrast","dark_mode","reduced_motion","dyslexia_font","line_spacing","text_to_speech"]})
+
+
+@app.post("/api/assignments")
+def create_assignment():
+    user=current_user()
+    if not user or user["role"]!="teacher": return jsonify({"error":"Мұғалім ретінде кіру қажет."}),403
+    body=request.get_json(silent=True) or {}
+    title=clean_text(body.get("title")); description=clean_text(body.get("description")); due=clean_text(body.get("due_date")); points=int(body.get("points",100)); class_id=int(body.get("class_id",0))
+    if not title or not description or not due or not class_id:return jsonify({"error":"Барлық өрісті толтырыңыз."}),400
+    with db() as connection:
+        owner=connection.execute("SELECT id FROM classes WHERE id=? AND teacher_id=?",(class_id,user["id"])).fetchone()
+        if not owner:return jsonify({"error":"Сынып табылмады."}),404
+        cur=connection.execute("INSERT INTO assignments(teacher_id,class_id,title,description,due_date,points,created_at) VALUES(?,?,?,?,?,?,?)",(user["id"],class_id,title,description,due,max(1,min(points,1000)),now()))
+    return jsonify({"ok":True,"id":cur.lastrowid}),201
+
+
+@app.get("/api/teacher/analytics")
+def teacher_analytics():
+    user=current_user()
+    if not user or user["role"]!="teacher":return jsonify({"error":"Мұғалім ретінде кіру қажет."}),403
+    with db() as connection:
+        classes=connection.execute("SELECT id,name,code FROM classes WHERE teacher_id=? ORDER BY created_at DESC",(user["id"],)).fetchall()
+        rows=[]
+        for c in classes:
+            students=connection.execute("SELECT COUNT(*) n FROM class_members WHERE class_id=?",(c["id"],)).fetchone()["n"]
+            attempts=connection.execute("SELECT COUNT(*) n FROM quiz_results q JOIN class_members cm ON cm.student_id=q.student_id WHERE cm.class_id=?",(c["id"],)).fetchone()["n"]
+            avg=connection.execute("SELECT COALESCE(AVG(q.score*100.0/NULLIF(q.total,0)),0) v FROM quiz_results q JOIN class_members cm ON cm.student_id=q.student_id WHERE cm.class_id=?",(c["id"],)).fetchone()["v"]
+            rows.append({"id":c["id"],"name":c["name"],"code":c["code"],"students":students,"attempts":attempts,"average":round(avg or 0)})
+    return jsonify({"classes":rows})
+
+
+@app.post("/api/assignments/<int:assignment_id>/submit")
+def submit_assignment(assignment_id):
+    user,error=_require_student()
+    if error:return error
+    answer=clean_text((request.get_json(silent=True) or {}).get("answer"))
+    if not answer:return jsonify({"error":"Жауапты жазыңыз."}),400
+    with db() as connection:
+        allowed=connection.execute("SELECT a.id FROM assignments a JOIN class_members cm ON cm.class_id=a.class_id WHERE a.id=? AND cm.student_id=?",(assignment_id,user["id"])).fetchone()
+        if not allowed:return jsonify({"error":"Тапсырма табылмады."}),404
+        connection.execute("INSERT OR REPLACE INTO assignment_submissions(assignment_id,student_id,answer,status,submitted_at) VALUES(?,?,?,?,?)",(assignment_id,user["id"],answer,"submitted",now()))
+    return jsonify({"ok":True})
 
 
 @app.get("/")
