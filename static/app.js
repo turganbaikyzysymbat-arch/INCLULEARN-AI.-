@@ -43,13 +43,23 @@ async function loadRoleDashboard(){
     nav.innerHTML=student ? `
       <button class="nav-link active" data-view="dashboard"><span>⌂</span><span>Менің оқуым</span></button>
       <button class="nav-link" data-view="materials"><span>▱</span><span>Материалдар</span></button>
-      <button class="nav-link" data-view="about"><span>✦</span><span>Ayla AI</span></button>
+      <button class="nav-link student-hub-link" data-hubnav="tutor"><span>✦</span><span>Ayla Tutor</span></button>
+      <button class="nav-link student-hub-link" data-hubnav="flashcards"><span>▣</span><span>Flashcards</span></button>
+      <button class="nav-link student-hub-link" data-hubnav="mistakes"><span>!</span><span>Қате дәптері</span></button>
+      <button class="nav-link student-hub-link" data-hubnav="assignments"><span>✓</span><span>Тапсырмалар</span></button>
+      <button class="nav-link student-hub-link" data-hubnav="plan"><span>◷</span><span>Study Plan</span></button>
+      <button class="nav-link student-hub-link" data-hubnav="accessibility"><span>◐</span><span>Accessibility</span></button>
     ` : `
       <button class="nav-link active" data-view="dashboard"><span>⌂</span><span>Teacher Space</span></button>
       <button class="nav-link" data-view="materials"><span>▱</span><span>Материалдар</span></button>
       <button class="nav-link" data-view="about"><span>✦</span><span>Ayla AI</span></button>
     `;
-    $$(".nav-link").forEach((item) => item.onclick = () => showView(item.dataset.view));
+    $$(".nav-link").forEach((item) => item.onclick = () => {
+      if(item.dataset.hubnav){
+        showView("dashboard");
+        setTimeout(()=>{switchHub(item.dataset.hubnav);document.querySelector("#learningHub")?.scrollIntoView({behavior:"smooth",block:"start"});},30);
+      } else showView(item.dataset.view);
+    });
   }
   const aiProfile=document.querySelector(".ai-profile");
   if(aiProfile && student){ aiProfile.querySelector("small").textContent="Сенің оқу серігің"; }
@@ -57,7 +67,31 @@ async function loadRoleDashboard(){
     document.querySelector("#statQuiz").textContent=data.quiz_count||0;
     document.querySelector("#statAverage").textContent=(data.average_score||0)+"%";
     document.querySelector("#statStreak").textContent=data.streak||0;
-    document.querySelector("#statLevel").textContent=levelFor(data.average_score||0,data.quiz_count||0);
+    document.querySelector("#statLevel").textContent=data.level_name || levelFor(data.average_score||0,data.quiz_count||0);
+    const progress=Math.max(0,Math.min(100,Math.round((data.average_score||0)*0.65 + Math.min(35,(data.streak||0)*5))));
+    const ring=document.querySelector("#studentProgressRing");
+    if(ring) ring.style.setProperty("--progress", `${progress * 3.6}deg`);
+    const setStudent=(id,value)=>{const el=document.querySelector(id);if(el)el.textContent=value;};
+    setStudent("#studentProgressPercent",`${progress}%`);
+    setStudent("#studentXp",`${data.xp||0} XP`);
+    setStudent("#studentLevelName",data.level_name||"Starter");
+    setStudent("#studentProgressHint", data.quiz_count ? `Соңғы орташа нәтижең ${data.average_score||0}%. Келесі қадамды Ayla-мен жалғастыр.` : "Алғашқы Quiz орындап, жеке прогресті баста.");
+    const weak=data.weak_topic;
+    setStudent("#weakTopic", weak ? `${weak.title} · ${weak.n} қате` : "Әзірге әлсіз тақырып анықталған жоқ");
+    const rec=document.querySelector("#studentRecommendation");
+    if(rec) rec.textContent=weak ? `Ayla саған «${weak.title}» тақырыбын қайта қарап, Mistake Book-пен жұмыс істеуді ұсынады.` : (data.quiz_count ? "Ayla саған жаңа Flashcards жасап, білімді бекітуді ұсынады." : "Ayla саған бүгін бір қысқа Quiz ұсынады.");
+    const weekly=data.weekly||[];
+    const maxCount=Math.max(1,...weekly.map(x=>x.count||0));
+    const chart=document.querySelector("#weeklyChart");
+    if(chart) chart.innerHTML=weekly.map(x=>`<div class="week-bar-wrap" title="${x.day}: ${x.count} Quiz"><div class="week-bar" style="height:${Math.max(10,((x.count||0)/maxCount)*100)}%"></div></div>`).join("");
+    const days=document.querySelector("#weeklyDays");
+    if(days) days.innerHTML=weekly.map(x=>`<span>${new Date(`${x.day}T12:00:00`).toLocaleDateString("kk-KZ",{weekday:"short"}).replace(".","")}</span>`).join("");
+    setStudent("#weeklyTotal",`${weekly.reduce((sum,x)=>sum+(x.count||0),0)} Quiz`);
+    const next=(data.assignments||[]).find(x=>!x.submitted);
+    setStudent("#nextAssignmentTitle",next?.title||"Бүгінгі келесі қадам");
+    setStudent("#nextAssignmentText",next ? `${next.class_name} · ${next.points} pt
+${next.description||"Тапсырманы орындап жібер."}` : (data.materials_count ? "Материалдан Quiz немесе Flashcards жасап көр." : "Материал қосып, оқу жолын баста."));
+    setStudent("#nextAssignmentDue",next ? `DEADLINE · ${next.due_date}` : "READY");
     const mission=data.mission||{source:"system",id:null,title:"Ayla AI миссиясы",done:0,target:1,text:"Бір Quiz орындаңыз"};
     document.querySelector("#missionText").textContent=mission.text;
     document.querySelector("#missionProgress").textContent=mission.done>=mission.target ? "✓ орындалды" : `${mission.done}/${mission.target}`;
@@ -93,6 +127,8 @@ async function loadRoleDashboard(){
       missionList.innerHTML=(data.missions||[]).map(m=>`<div class="mission-admin-item"><div><b>${esc(m.title)}</b><small>${esc(m.class_name)} · ${esc(m.due_date)}</small><p>${esc(m.description)}</p></div></div>`).join("")||'<div class="empty-inline">Әлі миссия берілген жоқ.</div>';
     }
   }
+  if(student && typeof loadLearningHub === "function") loadLearningHub();
+  if(!student && typeof loadTeacherAnalytics === "function") loadTeacherAnalytics();
 }
 async function checkAuth(){
   try{const res=await fetch("/api/auth/me");const data=await res.json();if(data.authenticated){currentUser=data.user;authScreen.classList.add("hidden");await loadRoleDashboard();}else authScreen.classList.remove("hidden");}
@@ -593,3 +629,110 @@ setAccessibility();
 fetch("/api/health").then((response) => response.json()).then((data) => {
   if (!data.database) $("#dbStatus").innerHTML = `<i style='background:#e09a50'></i> ${t("databaseConnected")}`;
 });
+/* ===== IncluLearn AI 2.0 Learning Hub ===== */
+async function loadLearningHub(){
+  if(!currentUser || currentUser.role!="student") return;
+  const res=await fetch("/api/student/learning-hub");
+  if(!res.ok)return;
+  const data=await res.json();
+  window.learningHubData=data;
+  const set=(id,v)=>{const el=document.querySelector(id);if(el)el.textContent=v;};
+  set("#hubFlashCount",data.flashcards.length); set("#hubMistakeCount",data.mistakes.length); set("#hubAssignmentCount",data.assignments.length); set("#hubMaterialCount",data.materials.length);
+  const next=data.assignments.find(x=>!x.submitted) || data.materials[0];
+  set("#hubNextTitle",next?.title||"Оқуды бастаңыз"); set("#hubNextText",next?.description||"Материал қосып, Quiz және Flashcards арқылы білімді бекітіңіз.");
+  renderHubFlashcards(data.flashcards); renderHubMistakes(data.mistakes); renderHubAssignments(data.assignments);
+}
+function renderHubFlashcards(cards){
+  const box=document.querySelector("#flashcardDeck"); if(!box)return;
+  if(!cards.length){box.innerHTML='<div class="hub-empty">Әзірге карточка жоқ. Алдымен материалды ашып, «Материалдан жасау» батырмасын басыңыз.</div>';return;}
+  const c=cards[0]; box.innerHTML=`<div class="flashcard" id="activeFlashcard"><div class="flash-front"><span>TERM</span><b>${esc(c.front)}</b><small>Жауабын көру үшін басыңыз</small></div><div class="flash-back hidden"><span>ANSWER</span><p>${esc(c.back)}</p></div></div><div class="flash-actions"><button data-rate="again">Again</button><button data-rate="hard">Hard</button><button data-rate="good">Good</button><button data-rate="easy">Easy</button></div><small class="flash-counter">${cards.length} карточка дайын</small>`;
+  document.querySelector("#activeFlashcard").onclick=()=>document.querySelector(".flash-back")?.classList.toggle("hidden");
+  document.querySelectorAll("[data-rate]").forEach(b=>b.onclick=async()=>{await authRequest(`/api/student/flashcards/${c.id}/rate`,{difficulty:b.dataset.rate});cards.shift();renderHubFlashcards(cards);});
+}
+function renderHubMistakes(items){
+  const box=document.querySelector("#mistakeList");if(!box)return;
+  box.innerHTML=items.length?items.map(x=>`<article class="mistake-item"><span>!</span><div><b>${esc(x.question)}</b><small>Сенің жауабың: ${esc(x.wrong_answer)}</small><p>Дұрыс жауап: <strong>${esc(x.correct_answer)}</strong></p></div></article>`).join(""): '<div class="hub-empty">Қате дәптері әзірге бос. Quiz кезінде қате жауаптарың осында сақталады.</div>';
+}
+function renderHubAssignments(items){
+  const box=document.querySelector("#assignmentList");if(!box)return;
+  box.innerHTML=items.length?items.map(x=>`<article class="assignment-item"><div><span class="assignment-status ${x.submitted?'done':''}">${x.submitted?'✓ Орындалды':'OPEN'}</span><b>${esc(x.title)}</b><small>${esc(x.class_name)} · deadline ${esc(x.due_date)} · ${x.points} pt</small><p>${esc(x.description)}</p></div>${x.submitted?'':`<button class="assignment-submit" data-assignment="${x.id}">Жауап беру</button>`}</article>`).join(""):'<div class="hub-empty">Мұғалім әзірге тапсырма берген жоқ.</div>';
+  document.querySelectorAll(".assignment-submit").forEach(btn=>btn.onclick=async()=>{const answer=prompt("Тапсырмаға жауабыңызды жазыңыз:");if(!answer)return;try{await authRequest(`/api/assignments/${btn.dataset.assignment}/submit`,{answer});toast("Тапсырма жіберілді ✓");loadLearningHub();}catch(e){toast(e.message)}});
+}
+async function generateCardsForLatest(){
+  const material=window.learningHubData?.materials?.[0];
+  if(!material)return toast("Алдымен материал қосыңыз.");
+  const res=await fetch(`/api/student/flashcards/generate/${material.id}`,{method:"POST"});const data=await res.json();if(!res.ok)return toast(data.error);renderHubFlashcards(data.flashcards);toast("Flashcards дайын ✓");
+}
+async function makeStudyPlan(){
+  const days=document.querySelector("#planDays")?.value||7;const res=await fetch(`/api/student/study-plan?days=${days}`);const data=await res.json();const box=document.querySelector("#studyPlan");
+  box.innerHTML=data.plan.map(x=>`<article class="plan-day"><span>DAY ${x.day}</span><div><b>${esc(x.topic)}</b>${x.tasks.map(t=>`<small>✓ ${esc(t)}</small>`).join("")}</div></article>`).join("");
+}
+
+async function askHubTutor(){
+  const material=window.learningHubData?.materials?.[0]; const q=document.querySelector("#hubTutorInput")?.value.trim(); const box=document.querySelector("#hubTutorAnswer");
+  if(!material)return toast("Алдымен материал қосыңыз."); if(!q)return toast("Сұрағыңызды жазыңыз.");
+  box.classList.remove("hidden"); box.textContent="Ayla AI жауап дайындап жатыр…";
+  try{const r=await fetch(`/api/materials/${material.id}/ask`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({question:q})});const d=await r.json();if(!r.ok)throw new Error(d.error);box.textContent=d.answer;}catch(e){box.textContent=e.message;}
+}
+function switchHub(tab){
+  document.querySelectorAll(".hub-tab").forEach(b=>b.classList.toggle("active",b.dataset.hubtab===tab));
+  ["overview","tutor","flashcards","mistakes","assignments","plan","accessibility"].forEach(x=>document.querySelector(`#hub${x[0].toUpperCase()+x.slice(1)}`)?.classList.toggle("hidden",x!==tab));
+  if(tab==="plan")makeStudyPlan();
+}
+function initLearningHub(){
+  document.querySelectorAll("[data-hubtab]").forEach(b=>b.onclick=()=>switchHub(b.dataset.hubtab));
+  document.querySelectorAll("[data-hub]").forEach(b=>b.onclick=()=>{switchHub(b.dataset.hub);document.querySelector("#learningHub")?.scrollIntoView({behavior:"smooth",block:"start"});});
+  document.querySelector("#hubRefresh")?.addEventListener("click",loadLearningHub);
+  document.querySelector("#generateCards")?.addEventListener("click",generateCardsForLatest);
+  document.querySelector("#makePlan")?.addEventListener("click",makeStudyPlan);
+  document.querySelector("#mistakePractice")?.addEventListener("click",()=>{switchHub("mistakes");toast("Қателерді қайталау режимі ашылды");});
+  document.querySelector("#hubTutorAsk")?.addEventListener("click",askHubTutor);
+  document.querySelector("#hubTutorInput")?.addEventListener("keydown",e=>{if(e.key==="Enter")askHubTutor();});
+  document.querySelector("#hubNextButton")?.addEventListener("click",()=>showView("materials"));
+  document.querySelectorAll("[data-access]").forEach(b=>b.onclick=()=>{
+    const a=b.dataset.access;
+    if(a==="fontUp")changeFont(0.1); if(a==="fontDown")changeFont(-0.1);
+    if(a==="contrast")document.querySelector("#contrastButton")?.click();
+    if(a==="dark")document.querySelector("#themeButton")?.click();
+    if(a==="dyslexia")document.body.classList.toggle("dyslexia-font");
+    if(a==="motion")document.body.classList.toggle("reduced-motion");
+    if(a==="spacing")document.body.classList.toggle("wide-spacing");
+    if(a==="speak"){
+      const text=document.querySelector("#result")?.innerText||document.querySelector("#hubNextText")?.innerText||"Оқу мәтіні жоқ.";
+      if("speechSynthesis" in window){speechSynthesis.cancel();speechSynthesis.speak(new SpeechSynthesisUtterance(text));}
+    }
+  });
+}
+initLearningHub();
+
+async function loadTeacherAnalytics(){
+  if(!currentUser || currentUser.role!=="teacher")return;
+  const res=await fetch("/api/teacher/analytics");if(!res.ok)return;const data=await res.json();
+  const box=document.querySelector("#teacherAnalytics");if(box)box.innerHTML=data.classes.length?data.classes.map(c=>`<div class="analytics-item"><div><b>${esc(c.name)}</b><small>${esc(c.code)}</small></div><strong>${c.average}%</strong><span>${c.students} оқушы · ${c.attempts} Quiz</span><div class="analytics-bar"><i style="width:${Math.min(100,c.average)}%"></i></div></div>`).join(""):'<div class="hub-empty">Analytics үшін сынып құрыңыз.</div>';
+  const select=document.querySelector("#assignmentClass");if(select)select.innerHTML='<option value="">Сыныпты таңдаңыз</option>'+data.classes.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("");
+}
+document.querySelector("#refreshAnalytics")?.addEventListener("click",loadTeacherAnalytics);
+document.querySelector("#createAssignment")?.addEventListener("click",async()=>{try{await authRequest("/api/assignments",{class_id:Number(document.querySelector("#assignmentClass").value),title:document.querySelector("#assignmentTitle").value,description:document.querySelector("#assignmentDescription").value,due_date:document.querySelector("#assignmentDue").value,points:Number(document.querySelector("#assignmentPoints").value||100)});toast("Assignment берілді ✓");document.querySelector("#assignmentTitle").value="";document.querySelector("#assignmentDescription").value="";loadTeacherAnalytics();}catch(e){toast(e.message)}});
+
+/* Full Quiz: 5 questions, results, mistake book, retry */
+async function generateQuiz(){
+  if(!state.materialId)return toast("Алдымен материалды таңдаңыз.");
+  const card=document.querySelector("#quizCard");if(!card)return;
+  card.classList.remove("hidden");card.innerHTML='<div class="quiz-loading"><span>✦</span><b>Ayla AI тест дайындап жатыр...</b><small>Материалға сүйенген 5 сұрақ</small></div>';
+  try{const res=await fetch(`/api/materials/${state.materialId}/quiz`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({language:state.language})});const data=await res.json();if(!res.ok)throw new Error(data.error);renderQuiz(data.quiz||[]);}catch(e){card.innerHTML=`<div class="hub-empty">${esc(e.message)}</div>`;}
+}
+function renderQuiz(quiz){
+  const card=document.querySelector("#quizCard");if(!card)return;
+  if(!quiz.length){card.innerHTML='<div class="hub-empty">Тест сұрақтары табылмады.</div>';return;}
+  let index=0,answers=[];
+  const draw=()=>{const q=quiz[index];card.innerHTML=`<div class="quiz-head"><div><span class="mini-label">AYLA QUIZ</span><h3>Біліміңді тексер</h3><small>${index+1}/${quiz.length} сұрақ</small></div><strong>${Math.round(index/quiz.length*100)}%</strong></div><div class="quiz-progress"><i style="width:${index/quiz.length*100}%"></i></div><div class="quiz-question"><b>${esc(q.question)}</b><div class="quiz-options">${q.options.map((o,i)=>`<button data-opt="${i}">${esc(o)}</button>`).join("")}</div></div>`;card.querySelectorAll("[data-opt]").forEach(btn=>btn.onclick=()=>{answers[index]=Number(btn.dataset.opt);index++;if(index<quiz.length)draw();else finish();});};
+  const finish=async()=>{let score=0;quiz.forEach((q,i)=>{if(answers[i]===q.correct)score++;else if(answers[i]!==undefined)saveMistakeFromQuiz(q,answers[i]);});const pct=Math.round(score/quiz.length*100);try{await authRequest("/api/quiz-results",{material_id:state.materialId,score,total:quiz.length});}catch(e){};card.innerHTML=`<div class="quiz-finish"><div class="quiz-score-ring"><b>${score}</b><span>/${quiz.length}</span></div><span class="mini-label">QUIZ COMPLETE</span><h3>${pct}% · Тест аяқталды!</h3><p>${pct>=80?"Жақсы нәтиже! Енді Flashcards арқылы бекітіңіз.":"Қателерді Mistake Book арқылы қайталап көріңіз."}</p><div><button id="retryQuiz" class="dash-primary">Қайта тапсыру</button><button id="openMistakes" class="dash-ghost">Қателерді көру</button></div></div>`;document.querySelector("#retryQuiz").onclick=generateQuiz;document.querySelector("#openMistakes").onclick=()=>{switchHub("mistakes");document.querySelector("#learningHub")?.scrollIntoView({behavior:"smooth"});};loadLearningHub();};draw();
+}
+async function saveMistakeFromQuiz(q,wrongIndex){try{await authRequest("/api/student/mistakes",{material_id:state.materialId,question:q.question,wrong_answer:q.options[wrongIndex]||"Жауап берілмеді",correct_answer:q.options[q.correct]});}catch(e){}}
+function addQuizStartButton(){
+  if(!document.querySelector("#quizCard")||document.querySelector("#startQuiz"))return;
+  document.querySelector("#quizCard").innerHTML='<div class="quiz-start"><div class="quiz-icon">✦</div><div><span class="mini-label">AYLA QUIZ</span><h3>Біліміңді тексер</h3><p>Материал бойынша 5 сұрақ. Нәтижең прогреске сақталады.</p></div><button id="startQuiz" class="dash-primary">Тестті бастау →</button></div>';
+  document.querySelector("#startQuiz").onclick=generateQuiz;
+}
+const quizObserver=new MutationObserver(()=>{if(document.querySelector("#outputSection:not(.hidden)"))addQuizStartButton();});
+quizObserver.observe(document.body,{subtree:true,attributes:true,attributeFilter:["class"]});
