@@ -14,11 +14,32 @@ function setAuthMode(mode){
   authSubmit.innerHTML=mode==="login"?"Кіру <b>→</b>":"Тіркелу <b>→</b>";
   document.querySelector("#authError").textContent="";
 }
+
+function openAuth(mode="login"){
+  setAuthMode(mode);
+  document.querySelector("#authModal")?.classList.remove("hidden");
+  document.body.classList.add("auth-modal-open");
+  setTimeout(()=>document.querySelector(mode==="register"?"#authName":"#authEmail")?.focus(),80);
+}
+function closeAuth(){
+  document.querySelector("#authModal")?.classList.add("hidden");
+  document.body.classList.remove("auth-modal-open");
+}
+
+document.querySelectorAll("[data-auth-open]").forEach((button)=>button.addEventListener("click",()=>openAuth(button.dataset.authOpen)));
+document.querySelectorAll("[data-auth-close]").forEach((button)=>button.addEventListener("click",closeAuth));
+document.addEventListener("keydown",(event)=>{if(event.key==="Escape") closeAuth();});
+
 async function authRequest(url, body){
   const res=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
   const data=await res.json();
   if(!res.ok) throw new Error(data.error||"Қате");
   return data;
+}
+async function copyTextSafe(value){
+  const text=String(value ?? "");
+  try{if(navigator.clipboard && window.isSecureContext){await navigator.clipboard.writeText(text);return true;}}catch(e){}
+  try{const area=document.createElement("textarea");area.value=text;area.setAttribute("readonly","");area.style.position="fixed";area.style.opacity="0";document.body.appendChild(area);area.select();const ok=document.execCommand("copy");area.remove();return ok;}catch(e){return false;}
 }
 function levelFor(score, quizzes){
   if(quizzes >= 10 || score >= 90) return "Master";
@@ -38,17 +59,22 @@ async function loadRoleDashboard(){
   document.querySelector("#roleKicker").textContent=student?"STUDENT SPACE":"TEACHER WORKSPACE";
   document.querySelector("#studentDashboard").classList.toggle("hidden",!student);
   document.querySelector("#teacherDashboard").classList.toggle("hidden",student);
+  document.querySelector("#studentAdaptPanel")?.classList.toggle("student-only-hidden",student);
+  const adaptButton=document.querySelector("#adaptButton");
+  if(adaptButton && student) adaptButton.innerHTML=`<span>✦</span> Ayla AI арқылы материалды дайындау <kbd>Ctrl ↵</kbd>`;
   const nav=document.querySelector(".sidebar nav");
   if(nav){
     nav.innerHTML=student ? `
       <button class="nav-link active" data-view="dashboard"><span>⌂</span><span>Менің оқуым</span></button>
       <button class="nav-link" data-view="materials"><span>▱</span><span>Материалдар</span></button>
       <button class="nav-link student-hub-link" data-hubnav="tutor"><span>✦</span><span>Ayla Tutor</span></button>
+      <button class="nav-link student-hub-link" data-hubnav="quiz"><span>?</span><span>Quiz</span></button>
       <button class="nav-link student-hub-link" data-hubnav="flashcards"><span>▣</span><span>Flashcards</span></button>
       <button class="nav-link student-hub-link" data-hubnav="mistakes"><span>!</span><span>Қате дәптері</span></button>
       <button class="nav-link student-hub-link" data-hubnav="assignments"><span>✓</span><span>Тапсырмалар</span></button>
       <button class="nav-link student-hub-link" data-hubnav="plan"><span>◷</span><span>Study Plan</span></button>
-      <button class="nav-link student-hub-link" data-hubnav="accessibility"><span>◐</span><span>Accessibility</span></button>
+      <button class="nav-link student-hub-link" data-hubnav="classes"><span>▤</span><span>Сыныптарым</span></button>
+      <button class="nav-link student-hub-link" data-hubnav="accessibility"><span>◐</span><span>Қолжетімділік</span></button>
     ` : `
       <button class="nav-link active" data-view="dashboard"><span>⌂</span><span>Teacher Space</span></button>
       <button class="nav-link" data-view="materials"><span>▱</span><span>Материалдар</span></button>
@@ -57,7 +83,12 @@ async function loadRoleDashboard(){
     $$(".nav-link").forEach((item) => item.onclick = () => {
       if(item.dataset.hubnav){
         showView("dashboard");
-        setTimeout(()=>{switchHub(item.dataset.hubnav);document.querySelector("#learningHub")?.scrollIntoView({behavior:"smooth",block:"start"});},30);
+        setTimeout(()=>{
+          if(item.dataset.hubnav==="classes"){document.querySelector("#studentClassesCard")?.scrollIntoView({behavior:"smooth",block:"center"});return;}
+          if(item.dataset.hubnav==="quiz"){document.querySelector("#quizCard")?.scrollIntoView({behavior:"smooth",block:"center"});return;}
+          switchHub(item.dataset.hubnav);
+          document.querySelector("#learningHub")?.scrollIntoView({behavior:"smooth",block:"start"});
+        },30);
       } else showView(item.dataset.view);
     });
   }
@@ -117,7 +148,7 @@ ${next.description||"Тапсырманы орындап жібер."}` : (data.
     document.querySelector("#teacherAttempts").textContent=attempts;
     document.querySelector("#teacherAverage").textContent=avg+"%";
     document.querySelector("#teacherClasses").innerHTML=classes.map(c=>`<div class="teacher-class-card"><div class="teacher-class-top"><div><span class="class-dot">✦</span><div><b>${esc(c.name)}</b><small>${esc(c.code)}</small></div></div><button class="copy-code" data-code="${esc(c.code)}">Кодты көшіру</button></div><div class="teacher-class-metrics"><span><b>${c.students||0}</b> оқушы</span><span><b>${c.attempts||0}</b> Quiz</span><span><b>${c.average||0}%</b> орташа</span></div></div>`).join("")||'<div class="empty-inline">Алдымен бірінші сыныпты құрыңыз.</div>';
-    document.querySelectorAll(".copy-code").forEach(btn=>btn.onclick=()=>{navigator.clipboard?.writeText(btn.dataset.code);toast("Сынып коды көшірілді");});
+    document.querySelectorAll(".copy-code").forEach(btn=>btn.onclick=async()=>{const ok=await copyTextSafe(btn.dataset.code);toast(ok?"Сынып коды көшірілді ✓":"Көшіру орындалмады. Кодты қолмен белгілеңіз.");});
     const missionClass=document.querySelector("#missionClass");
     if(missionClass){
       missionClass.innerHTML='<option value="">Сыныпты таңдаңыз</option>'+classes.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("");
@@ -148,7 +179,7 @@ authSubmit.onclick=async()=>{
   }catch(e){error.textContent=e.message;}
 };
 document.querySelector("#logoutButton").onclick=async()=>{await fetch("/api/auth/logout",{method:"POST"});location.reload();};
-document.querySelector("#joinClass").onclick=async()=>{try{const d=await authRequest("/api/classes/join",{code:document.querySelector("#classCode").value});toast(`Сіз ${d.class.name} сыныбына қосылдыңыз`);await loadRoleDashboard();}catch(e){toast(e.message);}};
+document.querySelector("#joinClass").onclick=async()=>{const code=document.querySelector("#classCode").value.trim().toUpperCase();if(!code)return toast("Алдымен сынып кодын енгізіңіз.");try{const d=await authRequest("/api/classes/join",{code});document.querySelector("#classCode").value="";toast(`Сіз «${d.class.name}» сыныбына қосылдыңыз ✓`);await loadRoleDashboard();await loadLearningHub();}catch(e){toast(e.message);}};
 document.querySelector("#missionAction")?.addEventListener("click",async()=>{
   const btn=document.querySelector("#missionAction");
   const id=btn?.dataset.missionId;
@@ -365,12 +396,12 @@ function renderResult(data) {
       renderResult({ id: state.materialId, title: state.title, source_text: state.source, adaptation: state.result, progress: state.progress });
     };
   });
-  $("#copyCurrent").onclick = () => {
+  $("#copyCurrent").onclick = async () => {
     const value = state.result[state.active];
-    navigator.clipboard?.writeText(typeof value === "object" ? JSON.stringify(value) : value || "");
-    toast(t("copied"));
+    const ok=await copyTextSafe(typeof value === "object" ? JSON.stringify(value) : value || "");
+    toast(ok ? t("copied") : "Көшіру орындалмады. Мәтінді қолмен белгілеңіз.");
   };
-  const audioText = state.result?.audio || state.result?.summary || state.result?.simplified || "";
+  const audioText = state.result?.audio || state.result?.summary || state.result?.simplified || state.source || "";
   const audioLang = state.language === "ru" ? "ru-RU" : state.language === "en" ? "en-US" : "kk-KZ";
   let audioEnabled = localStorage.getItem("inclulearnAudioEnabled") !== "false";
   const chooseVoice = () => {
@@ -378,9 +409,10 @@ function renderResult(data) {
     const voices = speechSynthesis.getVoices();
     if (!voices.length) return null;
     const base = audioLang.slice(0,2).toLowerCase();
-    return voices.find(v => v.lang?.toLowerCase() === audioLang.toLowerCase()) ||
-      voices.find(v => v.lang?.toLowerCase().startsWith(base)) ||
-      voices.find(v => v.default) || voices[0];
+    // Never fall back to an unrelated default voice (for example Arabic).
+    // If the browser has no matching voice, let the engine use the utterance language.
+    return voices.find(v => (v.lang||"").toLowerCase() === audioLang.toLowerCase()) ||
+      voices.find(v => (v.lang||"").toLowerCase().startsWith(base)) || null;
   };
   const updateAudioToggle = () => {
     const btn = $("#audioToggle");
@@ -401,19 +433,25 @@ function renderResult(data) {
       speechSynthesis.cancel();
       const utterance = new SpeechSynthesisUtterance(audioText);
       utterance.lang = audioLang;
-      utterance.rate = 0.9;
+      utterance.rate = 0.88;
       utterance.pitch = 1;
       const voice = chooseVoice();
       if (voice) utterance.voice = voice;
       utterance.onstart = () => { if($("#speak")) $("#speak").textContent="▶"; };
       utterance.onend = () => { if($("#speak")) $("#speak").textContent="▶"; };
-      utterance.onerror = () => toast("Аудионы іске қосу мүмкін болмады. Қайтадан ▶ басыңыз.");
+      utterance.onerror = (event) => {
+        if(event.error !== "canceled" && event.error !== "interrupted") toast(state.language === "kk" ? "Қазақша дауыс браузерде табылмады. Safari/Chrome тіл баптауларын тексеріңіз." : "Аудионы іске қосу мүмкін болмады. Қайтадан ▶ басыңыз.");
+      };
       speechSynthesis.resume();
       speechSynthesis.speak(utterance);
       toast(state.language === "kk" ? "Аудио ойнатылып жатыр" : state.language === "ru" ? "Аудио воспроизводится" : "Audio is playing");
     };
     if (speechSynthesis.getVoices().length) start();
-    else { speechSynthesis.onvoiceschanged = () => { speechSynthesis.onvoiceschanged = null; start(); }; setTimeout(start, 250); }
+    else {
+      const previous=speechSynthesis.onvoiceschanged;
+      speechSynthesis.onvoiceschanged = () => { speechSynthesis.onvoiceschanged = previous || null; start(); };
+      setTimeout(()=>{ if(!speechSynthesis.speaking) start(); }, 700);
+    }
   });
   $("#pauseSpeak")?.addEventListener("click", () => {
     if (!("speechSynthesis" in window)) return;
@@ -591,16 +629,47 @@ $$(".format").forEach((item) => item.onclick = () => setTimeout(() => {
 }, 0));
 $$(".nav-link").forEach((item) => item.onclick = () => showView(item.dataset.view));
 $("#printButton").onclick = () => window.print();
-$("#copyButton").onclick = () => {
+$("#copyButton").onclick = async () => {
   const text = Object.entries(state.result || {})
     .filter(([key]) => labels[key])
     .map(([key, value]) => `${labels[key]}\n${typeof value === "string" ? value : JSON.stringify(value)}`)
     .join("\n\n");
-  navigator.clipboard?.writeText(text);
-  toast("Барлық нәтиже көшірілді");
+  const ok=await copyTextSafe(text);
+  toast(ok?"Барлық нәтиже көшірілді ✓":"Көшіру орындалмады. Мәтінді қолмен белгілеңіз.");
 };
 $("#searchMaterials").oninput = () => loadMaterials();
 $("#refreshMaterials").onclick = () => loadMaterials();
+// Public landing page controls
+const landingLanguage=document.querySelector("#landingLanguage");
+if(landingLanguage){
+  landingLanguage.value=localStorage.getItem("learn4all-language")||"kk";
+  landingLanguage.onchange=(event)=>{
+    state.language=event.target.value;
+    localStorage.setItem("learn4all-language",state.language);
+    if($("#language")) $("#language").value=state.language;
+    applyLanguage();
+    toast(state.language==="kk"?"Қазақша тіл таңдалды":state.language==="ru"?"Выбран русский язык":"English selected");
+  };
+}
+document.querySelector("#landingFontDown")?.addEventListener("click",()=>changeFont(-0.1));
+document.querySelector("#landingFontUp")?.addEventListener("click",()=>changeFont(0.1));
+document.querySelector("#landingTheme")?.addEventListener("click",()=>{
+  localStorage.setItem("learn4all-theme",document.body.classList.contains("dark-mode")?"light":"dark");
+  setAccessibility();
+});
+
+document.querySelector("#feedbackForm")?.addEventListener("submit",(event)=>{
+  event.preventDefault();
+  const name=$("#feedbackName").value.trim();
+  const email=$("#feedbackEmail").value.trim();
+  const type=$("#feedbackType").value;
+  const message=$("#feedbackMessage").value.trim();
+  if(!message) return toast("Хабарламаңызды жазыңыз.");
+  const subject=encodeURIComponent(`[IncluLearn AI] ${type}`);
+  const body=encodeURIComponent(`Аты: ${name||"Көрсетілмеген"}\nEmail: ${email||"Көрсетілмеген"}\n\n${message}`);
+  window.location.href=`mailto:turganbaikyzysymbat@gmail.com?subject=${subject}&body=${body}`;
+});
+
 const savedLanguage = localStorage.getItem("learn4all-language");
 if (savedLanguage && window.LEARN4ALL_I18N?.[savedLanguage]) state.language = savedLanguage;
 $("#language").value = state.language;
@@ -644,8 +713,9 @@ async function loadLearningHub(){
 }
 function renderHubFlashcards(cards){
   const box=document.querySelector("#flashcardDeck"); if(!box)return;
-  if(!cards.length){box.innerHTML='<div class="hub-empty">Әзірге карточка жоқ. Алдымен материалды ашып, «Материалдан жасау» батырмасын басыңыз.</div>';return;}
-  const c=cards[0]; box.innerHTML=`<div class="flashcard" id="activeFlashcard"><div class="flash-front"><span>TERM</span><b>${esc(c.front)}</b><small>Жауабын көру үшін басыңыз</small></div><div class="flash-back hidden"><span>ANSWER</span><p>${esc(c.back)}</p></div></div><div class="flash-actions"><button data-rate="again">Again</button><button data-rate="hard">Hard</button><button data-rate="good">Good</button><button data-rate="easy">Easy</button></div><small class="flash-counter">${cards.length} карточка дайын</small>`;
+  if(!cards.length){box.innerHTML='<div class="hub-empty"><b>Flashcards деген не?</b><br>Бұл — материалдағы маңызды терминдерді жаттауға арналған карточкалар. Алдымен материалдан карточка жасаңыз.</div>';return;}
+  const c=cards[0];
+  box.innerHTML=`<div class="flash-explainer"><b>Қалай қолдану керек?</b><span>1. Карточканы бас → жауапты көр</span><span>2. Өзіңді бағала → Қайта / Қиын / Жақсы / Оңай</span><span>3. Бағалағаннан кейін келесі карточка ашылады</span></div><div class="flashcard" id="activeFlashcard"><div class="flash-front"><span>TERM · ${esc(c.material_title||'Материал')}</span><b>${esc(c.front)}</b><small>Карточканы басып, жауапты ашыңыз</small></div><div class="flash-back hidden"><span>ANSWER</span><p>${esc(c.back)}</p></div></div><div class="flash-actions"><button data-rate="again">Қайта</button><button data-rate="hard">Қиын</button><button data-rate="good">Жақсы</button><button data-rate="easy">Оңай</button></div><small class="flash-counter">${cards.length} карточка қалды</small>`;
   document.querySelector("#activeFlashcard").onclick=()=>document.querySelector(".flash-back")?.classList.toggle("hidden");
   document.querySelectorAll("[data-rate]").forEach(b=>b.onclick=async()=>{await authRequest(`/api/student/flashcards/${c.id}/rate`,{difficulty:b.dataset.rate});cards.shift();renderHubFlashcards(cards);});
 }
@@ -655,8 +725,10 @@ function renderHubMistakes(items){
 }
 function renderHubAssignments(items){
   const box=document.querySelector("#assignmentList");if(!box)return;
-  box.innerHTML=items.length?items.map(x=>`<article class="assignment-item"><div><span class="assignment-status ${x.submitted?'done':''}">${x.submitted?'✓ Орындалды':'OPEN'}</span><b>${esc(x.title)}</b><small>${esc(x.class_name)} · deadline ${esc(x.due_date)} · ${x.points} pt</small><p>${esc(x.description)}</p></div>${x.submitted?'':`<button class="assignment-submit" data-assignment="${x.id}">Жауап беру</button>`}</article>`).join(""):'<div class="hub-empty">Мұғалім әзірге тапсырма берген жоқ.</div>';
-  document.querySelectorAll(".assignment-submit").forEach(btn=>btn.onclick=async()=>{const answer=prompt("Тапсырмаға жауабыңызды жазыңыз:");if(!answer)return;try{await authRequest(`/api/assignments/${btn.dataset.assignment}/submit`,{answer});toast("Тапсырма жіберілді ✓");loadLearningHub();}catch(e){toast(e.message)}});
+  box.innerHTML=items.length?items.map(x=>`<article class="assignment-item assignment-enhanced"><div class="assignment-main"><span class="assignment-status ${x.submitted?'done':''}">${x.submitted?(x.submission_status==='graded'?'✓ Бағаланған':'↗ Жіберілген'):'OPEN'}</span><b>${esc(x.title)}</b><small>${esc(x.class_name)} · deadline ${esc(x.due_date)} · ${x.points} pt</small><p>${esc(x.description)}</p>${x.submission_status==='graded'?`<div class="teacher-feedback"><strong>Баға: ${x.submission_score}/${x.points}</strong>${x.teacher_comment?`<span>${esc(x.teacher_comment)}</span>`:''}</div>`:''}</div>${x.submitted?`<button class="assignment-view" data-assignment-view="${x.id}">Нәтижені көру</button>`:`<button class="assignment-submit" data-assignment="${x.id}">Жауап беру →</button>`}</article>`).join(""):'<div class="hub-empty"><b>Тапсырма әзірге жоқ.</b><br>Сыныпқа қосылғаннан кейін мұғалім берген тапсырмалар осы жерде автоматты түрде шығады.</div>';
+  document.querySelectorAll(".assignment-submit").forEach(btn=>btn.onclick=async()=>{const answer=prompt("Мұғалімге жіберетін жауабыңызды. Тапсырманы орындап, толық жауабыңызды енгізіңіз.");if(!answer)return;try{await authRequest(`/api/assignments/${btn.dataset.assignment}/submit`,{answer});toast("Жауап мұғалімге жіберілді ✓");loadLearningHub();}catch(e){toast(e.message)}});
+
+  document.querySelectorAll(".assignment-view").forEach(btn=>btn.onclick=()=>{const item=items.find(x=>String(x.id)===String(btn.dataset.assignmentView));if(item)toast(item.submission_status==='graded'?`Баға: ${item.submission_score}/${item.points}${item.teacher_comment?' · '+item.teacher_comment:''}`:"Жауабыңыз мұғалімге жіберілді.");});
 }
 async function generateCardsForLatest(){
   const material=window.learningHubData?.materials?.[0];
@@ -710,8 +782,16 @@ async function loadTeacherAnalytics(){
   const res=await fetch("/api/teacher/analytics");if(!res.ok)return;const data=await res.json();
   const box=document.querySelector("#teacherAnalytics");if(box)box.innerHTML=data.classes.length?data.classes.map(c=>`<div class="analytics-item"><div><b>${esc(c.name)}</b><small>${esc(c.code)}</small></div><strong>${c.average}%</strong><span>${c.students} оқушы · ${c.attempts} Quiz</span><div class="analytics-bar"><i style="width:${Math.min(100,c.average)}%"></i></div></div>`).join(""):'<div class="hub-empty">Analytics үшін сынып құрыңыз.</div>';
   const select=document.querySelector("#assignmentClass");if(select)select.innerHTML='<option value="">Сыныпты таңдаңыз</option>'+data.classes.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("");
+  loadTeacherSubmissions();
+}
+async function loadTeacherSubmissions(){
+  if(!currentUser || currentUser.role!=="teacher")return;
+  const res=await fetch("/api/teacher/submissions");if(!res.ok)return;const data=await res.json();const box=document.querySelector("#teacherSubmissions");if(!box)return;
+  box.innerHTML=data.submissions.length?data.submissions.map(x=>`<article class="submission-card"><div><span class="submission-status ${x.status==='graded'?'graded':''}">${x.status==='graded'?'✓ Бағаланған':'КҮТУДЕ'}</span><b>${esc(x.student_name)}</b><small>${esc(x.assignment_title)} · ${esc(x.class_name)} · ${esc(x.submitted_at||'')}</small><p>${esc(x.answer)}</p></div><div class="grade-box">${x.status==='graded'?`<strong>${x.score}/${x.points}</strong><small>${esc(x.teacher_comment||'Пікір жоқ')}</small>`:`<input type="number" min="0" max="${x.points}" value="${Math.round(x.points*0.8)}" data-grade-score="${x.assignment_id}:${x.student_id}"><input placeholder="Мұғалім пікірі" data-grade-comment="${x.assignment_id}:${x.student_id}"><button class="grade-submit" data-grade="${x.assignment_id}:${x.student_id}">Бағалау →</button>`}</div></article>`).join(""):'<div class="hub-empty">Оқушылар тапсырма жіберген кезде жауаптары осы жерде көрінеді.</div>';
+  box.querySelectorAll(".grade-submit").forEach(btn=>btn.onclick=async()=>{const [a,st]=btn.dataset.grade.split(":");const score=Number(box.querySelector(`[data-grade-score="${a}:${st}"]`).value);const comment=box.querySelector(`[data-grade-comment="${a}:${st}"]`).value;try{await authRequest(`/api/teacher/submissions/${a}/${st}/grade`,{score,comment});toast("Баға сақталды ✓");loadTeacherSubmissions();}catch(e){toast(e.message)}});
 }
 document.querySelector("#refreshAnalytics")?.addEventListener("click",loadTeacherAnalytics);
+document.querySelector("#refreshSubmissions")?.addEventListener("click",loadTeacherSubmissions);
 document.querySelector("#createAssignment")?.addEventListener("click",async()=>{try{await authRequest("/api/assignments",{class_id:Number(document.querySelector("#assignmentClass").value),title:document.querySelector("#assignmentTitle").value,description:document.querySelector("#assignmentDescription").value,due_date:document.querySelector("#assignmentDue").value,points:Number(document.querySelector("#assignmentPoints").value||100)});toast("Assignment берілді ✓");document.querySelector("#assignmentTitle").value="";document.querySelector("#assignmentDescription").value="";loadTeacherAnalytics();}catch(e){toast(e.message)}});
 
 /* Full Quiz: 5 questions, results, mistake book, retry */
@@ -723,9 +803,9 @@ async function generateQuiz(){
 }
 function renderQuiz(quiz){
   const card=document.querySelector("#quizCard");if(!card)return;
-  if(!quiz.length){card.innerHTML='<div class="hub-empty">Тест сұрақтары табылмады.</div>';return;}
+  if(!quiz.length){card.innerHTML='<div class="hub-empty">Тест сұрақтары табылмады. Материалда толық мәтін көбірек болуы керек.</div>';return;}
   let index=0,answers=[];
-  const draw=()=>{const q=quiz[index];card.innerHTML=`<div class="quiz-head"><div><span class="mini-label">AYLA QUIZ</span><h3>Біліміңді тексер</h3><small>${index+1}/${quiz.length} сұрақ</small></div><strong>${Math.round(index/quiz.length*100)}%</strong></div><div class="quiz-progress"><i style="width:${index/quiz.length*100}%"></i></div><div class="quiz-question"><b>${esc(q.question)}</b><div class="quiz-options">${q.options.map((o,i)=>`<button data-opt="${i}">${esc(o)}</button>`).join("")}</div></div>`;card.querySelectorAll("[data-opt]").forEach(btn=>btn.onclick=()=>{answers[index]=Number(btn.dataset.opt);index++;if(index<quiz.length)draw();else finish();});};
+  const draw=()=>{const q=quiz[index];card.innerHTML=`<div class="quiz-help"><b>Quiz қалай жұмыс істейді?</b><span>Бір дұрыс жауапты таңдаңыз.</span><span>Жауаптан кейін дұрыс/қате нәтиже көрсетіледі.</span><span>Соңында нәтижеңіз прогреске сақталады.</span></div><div class="quiz-head"><div><span class="mini-label">AYLA QUIZ</span><h3>Біліміңді тексер</h3><small>${index+1}/${quiz.length} сұрақ</small></div><strong>${Math.round(index/quiz.length*100)}%</strong></div><div class="quiz-progress"><i style="width:${index/quiz.length*100}%"></i></div><div class="quiz-question"><b>${esc(q.question)}</b><div class="quiz-options">${q.options.map((o,i)=>`<button data-opt="${i}">${esc(o)}</button>`).join("")}</div><div id="quizFeedback" class="quiz-feedback hidden"></div></div>`;card.querySelectorAll("[data-opt]").forEach(btn=>btn.onclick=()=>{if(card.querySelector("[data-opt][disabled]"))return;const selected=Number(btn.dataset.opt);answers[index]=selected;card.querySelectorAll("[data-opt]").forEach(b=>{b.disabled=true;if(Number(b.dataset.opt)===q.correct)b.classList.add("correct");});btn.classList.toggle("wrong",selected!==q.correct);const f=card.querySelector("#quizFeedback");f.classList.remove("hidden");f.innerHTML=selected===q.correct?"<b>Дұрыс!</b> Жауабыңызды жақсы таптыңыз.":`<b>Қате.</b> Дұрыс жауап: <strong>${esc(q.options[q.correct])}</strong>`;setTimeout(()=>{index++;if(index<quiz.length)draw();else finish();},700);});};
   const finish=async()=>{let score=0;quiz.forEach((q,i)=>{if(answers[i]===q.correct)score++;else if(answers[i]!==undefined)saveMistakeFromQuiz(q,answers[i]);});const pct=Math.round(score/quiz.length*100);try{await authRequest("/api/quiz-results",{material_id:state.materialId,score,total:quiz.length});}catch(e){};card.innerHTML=`<div class="quiz-finish"><div class="quiz-score-ring"><b>${score}</b><span>/${quiz.length}</span></div><span class="mini-label">QUIZ COMPLETE</span><h3>${pct}% · Тест аяқталды!</h3><p>${pct>=80?"Жақсы нәтиже! Енді Flashcards арқылы бекітіңіз.":"Қателерді Mistake Book арқылы қайталап көріңіз."}</p><div><button id="retryQuiz" class="dash-primary">Қайта тапсыру</button><button id="openMistakes" class="dash-ghost">Қателерді көру</button></div></div>`;document.querySelector("#retryQuiz").onclick=generateQuiz;document.querySelector("#openMistakes").onclick=()=>{switchHub("mistakes");document.querySelector("#learningHub")?.scrollIntoView({behavior:"smooth"});};loadLearningHub();};draw();
 }
 async function saveMistakeFromQuiz(q,wrongIndex){try{await authRequest("/api/student/mistakes",{material_id:state.materialId,question:q.question,wrong_answer:q.options[wrongIndex]||"Жауап берілмеді",correct_answer:q.options[q.correct]});}catch(e){}}
@@ -736,3 +816,4 @@ function addQuizStartButton(){
 }
 const quizObserver=new MutationObserver(()=>{if(document.querySelector("#outputSection:not(.hidden)"))addQuizStartButton();});
 quizObserver.observe(document.body,{subtree:true,attributes:true,attributeFilter:["class"]});
+
