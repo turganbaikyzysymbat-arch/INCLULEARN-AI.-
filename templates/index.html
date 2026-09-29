@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#111c25">
   <title>IncluLearn AI</title>
-  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='6') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css', v='7') }}">
 </head>
 <body>
   <div id="authScreen" class="auth-screen">
@@ -95,6 +95,18 @@
               <div><span class="mini-label">TODAY'S PATH</span><h3>Бүгін өзіңе бір қадам жаса.</h3><p>Қысқа Quiz, жаңа терминдер және Ayla AI көмегімен оқу жолыңды жалғастыр.</p><div class="student-actions"><button id="studentStudy" class="dash-primary">Оқуды бастау →</button><button id="focusButton" class="dash-ghost">◷ Focus Mode</button></div></div>
               <div class="streak-orb"><b id="statStreak">0</b><span>күн</span><small>оқу сериясы</small></div>
             </div>
+            <section class="student-command-center">
+              <div class="command-progress-card">
+                <div class="progress-ring" id="studentProgressRing"><div><b id="studentProgressPercent">0%</b><small>overall</small></div></div>
+                <div class="progress-copy"><span class="mini-label">LEARNING HEALTH</span><h3>Оқу жағдайың</h3><p id="studentProgressHint">Алғашқы Quiz орындап, жеке прогресті баста.</p><div class="xp-line"><span><b id="studentXp">0 XP</b> жиналды</span><span id="studentLevelName">Starter</span></div></div>
+              </div>
+              <div class="weekly-card"><div class="weekly-head"><div><span class="mini-label">THIS WEEK</span><b>Апталық белсенділік</b></div><span id="weeklyTotal">0 Quiz</span></div><div id="weeklyChart" class="weekly-chart"></div><div class="weekly-days" id="weeklyDays"></div></div>
+              <div class="next-deadline-card"><span class="mini-label">NEXT UP</span><h3 id="nextAssignmentTitle">Бүгінгі келесі қадам</h3><p id="nextAssignmentText">Материалды ашып, оқу жолын баста.</p><div class="deadline-pill" id="nextAssignmentDue">READY</div><button class="command-button" data-hub="assignments">Тапсырмалар →</button></div>
+            </section>
+            <div class="student-insight-row">
+              <article class="insight-card insight-focus"><span>✦</span><div><small>AI RECOMMENDATION</small><b id="studentRecommendation">Ayla саған бүгін бір қысқа Quiz ұсынады.</b><p>Кішкентай қадам да күнделікті прогресті сақтайды.</p></div></article>
+              <article class="insight-card insight-weak"><span>!</span><div><small>WEAK AREA</small><b id="weakTopic">Әзірге әлсіз тақырып анықталған жоқ</b><p>Қате дәптері толған сайын Ayla қай тақырыпты қайталау керегін көрсетеді.</p></div><button class="command-button" data-hub="mistakes">Қайталау →</button></article>
+            </div>
             <div class="stat-grid student-stats">
               <div><span class="stat-icon">✦</span><b id="statQuiz">0</b><small>Quiz орындалды</small></div>
               <div><span class="stat-icon">◆</span><b id="statAverage">0%</b><small>Орташа нәтиже</small></div>
@@ -108,6 +120,26 @@
               <article class="dash-card"><div class="card-title"><span>◎</span><div><b>Менің сыныптарым</b><small>Мұғалім берген орта</small></div></div><div class="join-row"><input id="classCode" placeholder="Сынып кодын енгізіңіз"><button id="joinClass">Қосылу</button></div><div id="studentClasses" class="class-list"></div></article>
               <article class="dash-card"><div class="card-title"><span>↗</span><div><b>Соңғы белсенділік</b><small>Соңғы 5 Quiz нәтижесі</small></div></div><div id="recentActivity" class="recent-list"></div></article>
             </div>
+            <div class="learning-command-grid">
+              <article class="dash-card command-card command-ai"><div class="command-icon">✦</div><div><span class="mini-label">AYLA AI</span><b>Жеке AI Tutor</b><p>Түсіндірме, мысал, hint және оқу жоспарын бір жерден ал.</p></div><button class="command-button" data-hub="tutor">Ayla-ға өту →</button></article>
+              <article class="dash-card command-card"><div class="command-icon">▣</div><div><span class="mini-label">FLASHCARDS</span><b>Ақылды карточкалар</b><p>Материалдан негізгі терминдерді автоматты түрде қайтала.</p></div><button class="command-button" data-hub="flashcards">Карточкалар →</button></article>
+              <article class="dash-card command-card"><div class="command-icon">✓</div><div><span class="mini-label">MISTAKE BOOK</span><b>Қате дәптері</b><p>Қате жауаптарды сақтап, әлсіз тақырыптарды қайта орында.</p></div><button class="command-button" data-hub="mistakes">Қателер →</button></article>
+              <article class="dash-card command-card"><div class="command-icon">◷</div><div><span class="mini-label">STUDY PLAN</span><b>AI оқу жоспары</b><p>3–14 күнге жеке оқу маршрутын автоматты құр.</p></div><button class="command-button" data-hub="plan">Жоспар құру →</button></article>
+            </div>
+            <section class="learning-hub" id="learningHub">
+              <div class="hub-head"><div><span class="mini-label">PERSONAL LEARNING HUB</span><h3>Оқуыңды өзің басқар</h3><p>Quiz, flashcards, қателер, тапсырмалар және accessibility құралдары.</p></div><button id="hubRefresh" class="dash-ghost">↻ Жаңарту</button></div>
+              <div class="hub-tabs"><button class="hub-tab active" data-hubtab="overview">Overview</button><button class="hub-tab" data-hubtab="tutor">Ayla Tutor</button><button class="hub-tab" data-hubtab="flashcards">Flashcards</button><button class="hub-tab" data-hubtab="mistakes">Mistake Book</button><button class="hub-tab" data-hubtab="assignments">Assignments</button><button class="hub-tab" data-hubtab="plan">Study Plan</button><button class="hub-tab" data-hubtab="accessibility">Accessibility</button></div>
+              <div id="hubTutor" class="hub-panel hidden"><div class="tutor-panel"><div class="tutor-avatar">✦</div><div><span class="mini-label">AYLA AI TUTOR</span><h4>Қай жері түсініксіз?</h4><p>Материалға сүйеніп сұрақ қой. Ayla жауапты қарапайым тілде түсіндіреді.</p><div class="tutor-row"><input id="hubTutorInput" placeholder="Мысалы: осы тақырыпты A2 деңгейінде түсіндір..."><button id="hubTutorAsk" class="dash-primary">Сұрау →</button></div><div id="hubTutorAnswer" class="tutor-answer hidden"></div></div></div></div>
+              <div id="hubOverview" class="hub-panel">
+                <div class="hub-metrics"><div><b id="hubFlashCount">0</b><span>Flashcards</span></div><div><b id="hubMistakeCount">0</b><span>Қателер</span></div><div><b id="hubAssignmentCount">0</b><span>Тапсырмалар</span></div><div><b id="hubMaterialCount">0</b><span>Материал</span></div></div>
+                <div class="hub-highlight"><div><span class="mini-label">NEXT STEP</span><h4 id="hubNextTitle">Оқуды бастаңыз</h4><p id="hubNextText">Алдымен материал қосып, Quiz орындаңыз.</p></div><button id="hubNextButton" class="dash-primary">Бастау →</button></div>
+              </div>
+              <div id="hubFlashcards" class="hub-panel hidden"><div class="hub-panel-title"><b>Flashcards</b><button id="generateCards" class="dash-primary">Материалдан жасау</button></div><div id="flashcardDeck" class="flashcard-deck"></div></div>
+              <div id="hubMistakes" class="hub-panel hidden"><div class="hub-panel-title"><b>Қате дәптері</b><button id="mistakePractice" class="dash-primary">Қателерді қайталау</button></div><div id="mistakeList" class="mistake-list"></div></div>
+              <div id="hubAssignments" class="hub-panel hidden"><div class="hub-panel-title"><b>Менің тапсырмаларым</b></div><div id="assignmentList" class="assignment-list"></div></div>
+              <div id="hubPlan" class="hub-panel hidden"><div class="hub-panel-title"><b>AI Study Plan</b><div><select id="planDays"><option value="3">3 күн</option><option value="7" selected>7 күн</option><option value="10">10 күн</option><option value="14">14 күн</option></select><button id="makePlan" class="dash-primary">Жоспар құру</button></div></div><div id="studyPlan" class="study-plan"></div></div>
+              <div id="hubAccessibility" class="hub-panel hidden"><div class="hub-panel-title"><b>Accessibility Center</b></div><div class="access-grid"><button data-access="fontUp">A+ Қаріпті үлкейту</button><button data-access="fontDown">A− Қаріпті кішірейту</button><button data-access="contrast">◐ Жоғары контраст</button><button data-access="dark">☾ Қараңғы режим</button><button data-access="dyslexia">Aa Оқуға ыңғайлы қаріп</button><button data-access="motion">◌ Анимацияны азайту</button><button data-access="spacing">↕ Жол аралығын үлкейту</button><button data-access="speak">◉ Мәтінді дыбыстау</button></div></div>
+            </section>
           </div>
 
           <div id="teacherDashboard" class="role-content hidden">
@@ -123,6 +155,8 @@
             <div class="dash-card create-class-card"><div><div class="card-title"><span>＋</span><div><b>Жаңа сынып</b><small>Оқушыларға код беріп, бірге оқу бастаңыз</small></div></div></div><div class="teacher-create"><input id="className" placeholder="Мысалы: Информатика · 2A"><input id="classCodeCreate" placeholder="Код: INF-2026"><button id="createClass">Сынып құру →</button></div></div>
             <div class="dash-card mission-admin-card"><div class="card-title"><span>✦</span><div><b>Оқушыға оқу миссиясын беру</b><small>Мұғалім күндік немесе мерзімі бар тапсырманы өзі жазады</small></div></div><div class="teacher-create mission-form"><select id="missionClass"><option value="">Сыныпты таңдаңыз</option></select><input id="missionDueDate" type="date"><input id="missionTitleInput" placeholder="Миссия атауы: Бүгінгі тақырыпты қайталау"><textarea id="missionDescription" placeholder="Оқушы не істеуі керек? Мысалы: Материалды оқып, соңынан Quiz орындаңыз."></textarea><button id="createMission">Миссияны беру →</button></div><div id="teacherMissions" class="mission-admin-list"></div></div>
             <div class="dash-card"><div class="card-title"><span>▦</span><div><b>Сыныптар</b><small>Әр сыныптың қысқаша көрсеткіші</small></div></div><div id="teacherClasses" class="teacher-class-grid"></div></div>
+            <div class="dash-card teacher-analytics-card"><div class="card-title"><span>◈</span><div><b>Class Analytics</b><small>Оқушылардың нәтижесін және оқу белсенділігін бақылаңыз</small></div><button id="refreshAnalytics" class="dash-ghost">↻ Жаңарту</button></div><div id="teacherAnalytics" class="analytics-grid"></div></div>
+            <div class="dash-card assignment-admin-card"><div class="card-title"><span>✓</span><div><b>Assignment Builder</b><small>Сыныпқа deadline және баллмен тапсырма беріңіз</small></div></div><div class="teacher-create assignment-form"><select id="assignmentClass"><option value="">Сыныпты таңдаңыз</option></select><input id="assignmentTitle" placeholder="Тапсырма атауы"><input id="assignmentDue" type="date"><input id="assignmentPoints" type="number" min="1" max="1000" value="100" placeholder="Балл"><textarea id="assignmentDescription" placeholder="Тапсырманың толық сипаттамасы"></textarea><button id="createAssignment">Тапсырманы беру →</button></div></div>
           </div>
         </div>
 
@@ -172,6 +206,7 @@
           <div id="progressBar" class="progress-card hidden"><div><b>Оқу прогресі</b><small id="progressText">0% аяқталды</small></div><div class="progress-track"><span id="progressFill"></span></div></div>
           <div id="tabs" class="tabs"></div><div id="result" class="result"></div>
           <div id="practiceCard" class="practice-card hidden"></div>
+          <div id="quizCard" class="quiz-card hidden"></div>
           <div class="ask-card"><div class="ask-title"><div class="ask-avatar">✦</div><div><b data-i18n="askAyla">Ayla AI-ға сұрақ қойыңыз</b><small data-i18n="answerFromMaterial">Жауап жүктелген материалға сүйеніп беріледі</small></div></div><div class="ask-row"><input id="questionInput" data-i18n-placeholder="questionPlaceholder" placeholder="Мысалы: Бұл тақырыптың негізгі идеясы қандай?"><button id="askButton" data-i18n="getAnswer">Жауап алу <span>→</span></button></div><div id="answer" class="answer hidden"></div></div>
         </section>
       </section>
@@ -192,6 +227,6 @@
   </div>
   <div id="toast" class="toast" role="status"></div>
   <script src="{{ url_for('static', filename='i18n.js') }}"></script>
-  <script src="{{ url_for('static', filename='app.js', v='5') }}"></script>
+  <script src="{{ url_for('static', filename='app.js', v='8') }}"></script>
 </body>
 </html>
