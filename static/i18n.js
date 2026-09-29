@@ -1,4 +1,3 @@
-
 window.LEARN4ALL_I18N = {
   kk: {
     inclusiveLearning: "Инклюзивті оқу", learningAssistant: "Оқу көмекшісі", workspace: "Жұмыс кеңістігі",
