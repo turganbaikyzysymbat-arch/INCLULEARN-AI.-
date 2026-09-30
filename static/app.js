@@ -173,7 +173,7 @@ function renderResult(data) {
     navigator.clipboard?.writeText(typeof value === "object" ? JSON.stringify(value) : value || "");
     toast(t("copied"));
   };
-$("#speak")?.addEventListener("click", async () => {
+$("#speak")?.addEventListener("click", () => {
   if (!("speechSynthesis" in window)) {
     return toast("Бұл браузерде аудио оқу қолжетімсіз.");
   }
@@ -184,68 +184,49 @@ $("#speak")?.addEventListener("click", async () => {
     .trim();
 
   if (!text) {
-    return toast("Оқылатын мәтін жоқ.");
+    return toast("Оқылатын мәтін табылмады.");
   }
 
-  window.speechSynthesis.cancel();
+  speechSynthesis.cancel();
 
-  const speakNow = () => {
-    const voices = window.speechSynthesis.getVoices();
+  const voices = speechSynthesis.getVoices();
 
-    const lang =
-      state.language === "ru"
-        ? "ru-RU"
-        : state.language === "en"
-        ? "en-US"
-        : "kk-KZ";
+  const lang =
+    state.language === "ru"
+      ? "ru-RU"
+      : state.language === "en"
+      ? "en-US"
+      : "kk-KZ";
 
-    const prefix = lang.substring(0, 2).toLowerCase();
+  const utter = new SpeechSynthesisUtterance(text);
 
-    let voice = voices.find(v =>
-      v.lang.toLowerCase().startsWith(prefix)
-    );
+  utter.lang = lang;
+  utter.rate = 0.9;
+  utter.pitch = 1;
+  utter.volume = 1;
 
-    if (!voice) {
-      voice = voices.find(v =>
-        v.lang.toLowerCase().includes(prefix)
-      );
-    }
+  const voice = voices.find(v =>
+    v.lang.toLowerCase().startsWith(lang.substring(0, 2).toLowerCase())
+  );
 
-    const utter = new SpeechSynthesisUtterance(text);
+  if (voice) {
+    utter.voice = voice;
+  }
 
-    utter.lang = lang;
-    utter.rate = 0.85;
-    utter.pitch = 1;
-    utter.volume = 1;
-
-    if (voice) {
-      utter.voice = voice;
-    }
-
-    utter.onstart = () => {
-      toast("🔊 Аудио басталды");
-    };
-
-    utter.onerror = (e) => {
-      console.log(e);
-      toast("Аудио іске қосылмады");
-    };
-
-    utter.onend = () => {
-      toast("Аудио аяқталды");
-    };
-
-    window.speechSynthesis.speak(utter);
+  utter.onstart = () => {
+    toast("🔊 Аудио ойнатылып жатыр");
   };
 
+  utter.onerror = () => {
+    toast("Аудио іске қосылмады");
+  };
 
-  if (window.speechSynthesis.getVoices().length === 0) {
-    window.speechSynthesis.onvoiceschanged = speakNow;
-  } else {
-    speakNow();
-  }
+  utter.onend = () => {
+    toast("Аудио аяқталды");
+  };
+
+  speechSynthesis.speak(utter);
 });
-  });
   renderProgress(data.progress || state.progress);
   $("#outputSection").classList.remove("hidden");
   $("#outputSection").scrollIntoView({ behavior: "smooth", block: "start" });
