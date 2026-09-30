@@ -77,6 +77,10 @@ async function loadRoleDashboard(){
       <button class="nav-link student-hub-link" data-hubnav="accessibility"><span>◐</span><span>Қолжетімділік</span></button>
     ` : `
       <button class="nav-link active" data-view="dashboard"><span>⌂</span><span>Teacher Space</span></button>
+      <button class="nav-link teacher-jump" data-teacher-target="studio"><span>✦</span><span>Тапсырманы бейімдеу</span></button>
+      <button class="nav-link teacher-jump" data-teacher-target="assignments"><span>✓</span><span>Тапсырмалар</span></button>
+      <button class="nav-link teacher-jump" data-teacher-target="submissions"><span>☑</span><span>Оқушы жауаптары</span></button>
+      <button class="nav-link teacher-jump" data-teacher-target="analytics"><span>◈</span><span>Analytics</span></button>
       <button class="nav-link" data-view="materials"><span>▱</span><span>Материалдар</span></button>
       <button class="nav-link" data-view="about"><span>✦</span><span>Ayla AI</span></button>
     `;
@@ -88,6 +92,12 @@ async function loadRoleDashboard(){
           if(item.dataset.hubnav==="quiz"){document.querySelector("#quizCard")?.scrollIntoView({behavior:"smooth",block:"center"});return;}
           switchHub(item.dataset.hubnav);
           document.querySelector("#learningHub")?.scrollIntoView({behavior:"smooth",block:"start"});
+        },30);
+      } else if(item.dataset.teacherTarget){
+        showView("dashboard");
+        setTimeout(()=>{
+          const map={studio:"#teacherStudio",assignments:"#assignment-admin",submissions:"#submission-admin",analytics:"#teacher-analytics"};
+          document.querySelector(map[item.dataset.teacherTarget]||"#teacherDashboard")?.scrollIntoView({behavior:"smooth",block:"start"});
         },30);
       } else showView(item.dataset.view);
     });
@@ -152,6 +162,10 @@ ${next.description||"Тапсырманы орындап жібер."}` : (data.
     const missionClass=document.querySelector("#missionClass");
     if(missionClass){
       missionClass.innerHTML='<option value="">Сыныпты таңдаңыз</option>'+classes.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("");
+    }
+    const adaptClass=document.querySelector("#adaptClass");
+    if(adaptClass){
+      adaptClass.innerHTML='<option value="">Сыныпқа жібермей сақтау</option>'+classes.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join("");
     }
     const missionList=document.querySelector("#teacherMissions");
     if(missionList){
@@ -480,6 +494,8 @@ async function adapt() {
     body.append("title", $("#materialTitle").value.trim() || "Жаңа оқу материалы");
     body.append("text", text);
     body.append("language", state.language);
+    const level = document.querySelector("#adaptLevel")?.value || "Intermediate";
+    body.append("level", level);
     const response = await fetch("/api/materials", { method: "POST", body });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error);
@@ -503,6 +519,8 @@ async function upload(file) {
   body.append("file", file);
   body.append("title", $("#materialTitle").value);
   body.append("language", state.language);
+  const level = document.querySelector("#adaptLevel")?.value || "Intermediate";
+  body.append("level", level);
   try {
     const response = await fetch("/api/materials", { method: "POST", body });
     const data = await response.json();
@@ -637,6 +655,19 @@ $("#copyButton").onclick = async () => {
   const ok=await copyTextSafe(text);
   toast(ok?"Барлық нәтиже көшірілді ✓":"Көшіру орындалмады. Мәтінді қолмен белгілеңіз.");
 };
+$("#assignAdaptedButton")?.addEventListener("click",async()=>{
+  const classId=Number(document.querySelector("#adaptClass")?.value||0);
+  const title=(document.querySelector("#materialTitle")?.value||"Бейімделген тапсырма").trim();
+  const description=state.result?.tasks || state.result?.simplified || state.source;
+  if(!classId)return toast("Алдымен сыныпты таңдаңыз.");
+  if(!description)return toast("Алдымен материалды дайындаңыз.");
+  try{
+    const due=new Date(); due.setDate(due.getDate()+7);
+    const dueDate=due.toISOString().slice(0,10);
+    await authRequest("/api/assignments",{class_id:classId,title:`${title} · бейімделген тапсырма`,description,due_date:dueDate,points:100});
+    toast("Бейімделген тапсырма сыныпқа жіберілді ✓");
+  }catch(e){toast(e.message||"Тапсырманы жіберу мүмкін болмады.");}
+});
 $("#searchMaterials").oninput = () => loadMaterials();
 $("#refreshMaterials").onclick = () => loadMaterials();
 // Public landing page controls
@@ -816,4 +847,5 @@ function addQuizStartButton(){
 }
 const quizObserver=new MutationObserver(()=>{if(document.querySelector("#outputSection:not(.hidden)"))addQuizStartButton();});
 quizObserver.observe(document.body,{subtree:true,attributes:true,attributeFilter:["class"]});
+
 
