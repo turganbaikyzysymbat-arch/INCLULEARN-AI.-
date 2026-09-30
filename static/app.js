@@ -174,15 +174,34 @@ function renderResult(data) {
     toast(t("copied"));
   };
   $("#speak")?.addEventListener("click", () => {
-    if (!("speechSynthesis" in window)) return toast(state.language === "kk" ? "Бұл браузерде аудио қолжетімсіз." : state.language === "ru" ? "Аудио недоступно в этом браузере." : "Audio is not available in this browser.");
+    if (!("speechSynthesis" in window)) {
+      return toast(state.language === "kk" ? "Бұл браузерде аудио қолжетімсіз." : state.language === "ru" ? "Аудио недоступно в этом браузере." : "Audio is not available in this browser.");
+    }
+
+    const text = String(state.result?.audio || state.result?.summary || state.source || "").trim();
+    if (!text) {
+      return toast(state.language === "kk" ? "Оқылатын мәтін табылмады." : "No text to read.");
+    }
+
+    const voices = speechSynthesis.getVoices();
+    const wanted = state.language === "ru" ? "ru" : state.language === "en" ? "en" : "kk";
+    const voice = voices.find(v => v.lang.toLowerCase().startsWith(wanted));
+
+    if (wanted === "kk" && !voice) {
+      return toast("Қазақша дауыс бұл құрылғыда қолжетімсіз. Браузерге қазақша дауыс орнатыңыз.");
+    }
+
     speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(state.result.audio || "");
-    utterance.lang = state.language === "ru" ? "ru-RU" : state.language === "en" ? "en-US" : "kk-KZ";
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = voice ? voice.lang : (wanted === "ru" ? "ru-RU" : "en-US");
+    if (voice) utterance.voice = voice;
+    utterance.rate = 1;
+
     speechSynthesis.speak(utterance);
     toast(state.language === "kk" ? "Аудио ойнатылып жатыр" : state.language === "ru" ? "Аудио воспроизводится" : "Audio is playing");
   });
   renderProgress(data.progress || state.progress);
-  renderPractice();
   $("#outputSection").classList.remove("hidden");
   $("#outputSection").scrollIntoView({ behavior: "smooth", block: "start" });
 }
