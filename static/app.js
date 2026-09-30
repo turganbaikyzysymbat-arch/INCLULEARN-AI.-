@@ -1,3 +1,4 @@
+
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
@@ -175,31 +176,23 @@ function renderResult(data) {
   };
   $("#speak")?.addEventListener("click", () => {
     if (!("speechSynthesis" in window)) {
-      return toast(state.language === "kk" ? "Бұл браузерде аудио қолжетімсіз." : state.language === "ru" ? "Аудио недоступно в этом браузере." : "Audio is not available in this browser.");
+      return toast("Бұл браузерде мәтінді дыбыстау қолжетімсіз.");
     }
-
-    const text = String(state.result?.audio || state.result?.summary || state.source || "").trim();
-    if (!text) {
-      return toast(state.language === "kk" ? "Оқылатын мәтін табылмады." : "No text to read.");
-    }
-
-    const voices = speechSynthesis.getVoices();
-    const wanted = state.language === "ru" ? "ru" : state.language === "en" ? "en" : "kk";
-    const voice = voices.find(v => v.lang.toLowerCase().startsWith(wanted));
-
-    if (wanted === "kk" && !voice) {
-      return toast("Қазақша дауыс бұл құрылғыда қолжетімсіз. Браузерге қазақша дауыс орнатыңыз.");
-    }
+    const text = String(state.result.audio || state.result.summary || "")
+      .replace(/[*#_`]/g, "")
+      .replace(/[^\p{L}\p{N}\s.,!?-]/gu, " ");
+    if (!text.trim()) return toast("Оқылатын мәтін табылмады.");
 
     speechSynthesis.cancel();
-
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = voice ? voice.lang : (wanted === "ru" ? "ru-RU" : "en-US");
+    utterance.lang = state.language === "ru" ? "ru-RU" : state.language === "en" ? "en-US" : "kk-KZ";
+    utterance.rate = 0.9;
+    const voices = speechSynthesis.getVoices();
+    const prefix = state.language === "ru" ? "ru" : state.language === "en" ? "en" : "kk";
+    const voice = voices.find(v => v.lang.toLowerCase().startsWith(prefix));
     if (voice) utterance.voice = voice;
-    utterance.rate = 1;
-
     speechSynthesis.speak(utterance);
-    toast(state.language === "kk" ? "Аудио ойнатылып жатыр" : state.language === "ru" ? "Аудио воспроизводится" : "Audio is playing");
+    toast("Аудио ойнатылып жатыр");
   });
   renderProgress(data.progress || state.progress);
   $("#outputSection").classList.remove("hidden");
@@ -404,6 +397,4 @@ setAccessibility();
 fetch("/api/health").then((response) => response.json()).then((data) => {
   if (!data.database) $("#dbStatus").innerHTML = `<i style='background:#e09a50'></i> ${t("databaseConnected")}`;
 });
-
-
 
