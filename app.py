@@ -184,12 +184,6 @@ def init_db():
             );
             """
         )
-        # Safe migrations for older Render/SQLite databases.
-        cols = {row[1] for row in connection.execute("PRAGMA table_info(assignment_submissions)").fetchall()}
-        if "teacher_comment" not in cols:
-            connection.execute("ALTER TABLE assignment_submissions ADD COLUMN teacher_comment TEXT DEFAULT ''")
-        if "graded_at" not in cols:
-            connection.execute("ALTER TABLE assignment_submissions ADD COLUMN graded_at TEXT")
 
 
 def now():
@@ -751,25 +745,6 @@ def join_class():
     return jsonify({"ok":True,"class":{"id":cls["id"],"name":cls["name"],"code":cls["code"]}})
 
 
-@app.get("/api/student/classes")
-def student_classes():
-    user, error = _require_student()
-    if error:
-        return error
-    with db() as connection:
-        rows = connection.execute("""
-            SELECT c.id, c.name, c.code, u.name teacher_name, c.created_at,
-                   (SELECT COUNT(*) FROM class_members cm2 WHERE cm2.class_id=c.id) student_count,
-                   (SELECT COUNT(*) FROM assignments a WHERE a.class_id=c.id) assignment_count
-            FROM classes c
-            JOIN class_members cm ON cm.class_id=c.id
-            JOIN users u ON u.id=c.teacher_id
-            WHERE cm.student_id=?
-            ORDER BY c.created_at DESC
-        """, (user["id"],)).fetchall()
-    return jsonify({"classes":[dict(x) for x in rows]})
-
-
 @app.get("/api/classes/<int:class_id>/students")
 def class_students(class_id):
     user=current_user()
@@ -855,18 +830,7 @@ def learning_hub():
         mats = connection.execute("SELECT id,title,source_text FROM materials ORDER BY updated_at DESC LIMIT 12").fetchall()
         cards = connection.execute("SELECT f.*,m.title material_title FROM flashcards f JOIN materials m ON m.id=f.material_id WHERE f.student_id=? ORDER BY f.id DESC LIMIT 40", (user["id"],)).fetchall()
         mistakes = connection.execute("SELECT x.*,m.title material_title FROM mistakes x JOIN materials m ON m.id=x.material_id WHERE x.student_id=? ORDER BY x.id DESC LIMIT 20", (user["id"],)).fetchall()
-        assignments = connection.execute("""
-            SELECT a.*, c.name class_name,
-                   s.status submission_status, s.score submission_score,
-                   s.teacher_comment, s.submitted_at,
-                   CASE WHEN s.assignment_id IS NOT NULL THEN 1 ELSE 0 END submitted
-            FROM assignments a
-            JOIN classes c ON c.id=a.class_id
-            JOIN class_members cm ON cm.class_id=c.id
-            LEFT JOIN assignment_submissions s ON s.assignment_id=a.id AND s.student_id=?
-            WHERE cm.student_id=?
-            ORDER BY a.due_date ASC LIMIT 12
-        """, (user["id"],user["id"])).fetchall()
+        assignments = connection.execute("SELECT a.*,c.name class_name, EXISTS(SELECT 1 FROM assignment_submissions s WHERE s.assignment_id=a.id AND s.student_id=?) submitted FROM assignments a JOIN classes c ON c.id=a.class_id JOIN class_members cm ON cm.class_id=c.id WHERE cm.student_id=? ORDER BY a.due_date ASC LIMIT 12", (user["id"],user["id"])).fetchall()
     return jsonify({"materials":[dict(x) for x in mats],"flashcards":[dict(x) for x in cards],"mistakes":[dict(x) for x in mistakes],"assignments":[dict(x) for x in assignments]})
 
 
@@ -951,51 +915,6 @@ def create_assignment():
         if not owner:return jsonify({"error":"Сынып табылмады."}),404
         cur=connection.execute("INSERT INTO assignments(teacher_id,class_id,title,description,due_date,points,created_at) VALUES(?,?,?,?,?,?,?)",(user["id"],class_id,title,description,due,max(1,min(points,1000)),now()))
     return jsonify({"ok":True,"id":cur.lastrowid}),201
-
-
-@app.get("/api/teacher/submissions")
-def teacher_submissions():
-    user=current_user()
-    if not user or user["role"]!="teacher":
-        return jsonify({"error":"Мұғалім ретінде кіру қажет."}),403
-    with db() as connection:
-        rows=connection.execute("""
-            SELECT s.assignment_id, s.student_id, s.answer, s.status, s.score,
-                   s.teacher_comment, s.submitted_at, s.graded_at,
-                   a.title assignment_title, a.points, c.name class_name,
-                   u.name student_name, u.email student_email
-            FROM assignment_submissions s
-            JOIN assignments a ON a.id=s.assignment_id
-            JOIN classes c ON c.id=a.class_id
-            JOIN users u ON u.id=s.student_id
-            WHERE a.teacher_id=?
-            ORDER BY CASE WHEN s.status='submitted' THEN 0 ELSE 1 END, s.submitted_at DESC
-            LIMIT 100
-        """, (user["id"],)).fetchall()
-    return jsonify({"submissions":[dict(x) for x in rows]})
-
-
-@app.post("/api/teacher/submissions/<int:assignment_id>/<int:student_id>/grade")
-def grade_submission(assignment_id, student_id):
-    user=current_user()
-    if not user or user["role"]!="teacher":
-        return jsonify({"error":"Мұғалім ретінде кіру қажет."}),403
-    body=request.get_json(silent=True) or {}
-    try: score=int(body.get("score",0))
-    except: score=-1
-    comment=clean_text(body.get("comment"))
-    with db() as connection:
-        row=connection.execute("""
-            SELECT s.assignment_id, a.points FROM assignment_submissions s
-            JOIN assignments a ON a.id=s.assignment_id
-            WHERE s.assignment_id=? AND s.student_id=? AND a.teacher_id=?
-        """, (assignment_id,student_id,user["id"])).fetchone()
-        if not row:
-            return jsonify({"error":"Жауап табылмады."}),404
-        if score < 0 or score > row["points"]:
-            return jsonify({"error":f"Балл 0-{row['points']} аралығында болуы керек."}),400
-        connection.execute("UPDATE assignment_submissions SET score=?, status='graded', teacher_comment=?, graded_at=? WHERE assignment_id=? AND student_id=?", (score,comment,now(),assignment_id,student_id))
-    return jsonify({"ok":True,"score":score,"comment":comment})
 
 
 @app.get("/api/teacher/analytics")
@@ -1135,7 +1054,6 @@ def create_material():
         body = request.get_json(silent=True) if request.is_json else {}
         title = clean_text(request.form.get("title") or body.get("title", ""))
         language = request.form.get("language") or body.get("language") or "kk"
-        level = request.form.get("level") or body.get("level") or "Intermediate"
         file = request.files.get("file")
         text = request.form.get("text", "") or body.get("text", "")
         file_name = file.filename if file else ""
@@ -1154,7 +1072,7 @@ def create_material():
                 (title, text, file_name, language, timestamp, timestamp),
             )
             material_id = cursor.lastrowid
-        result = await_adaptation(material_id, text, language, level)
+        result = await_adaptation(material_id, text, language)
         return jsonify(
             {"id": material_id, "title": title, "source_text": text, "adaptation": result}
         ), 201
@@ -1162,7 +1080,7 @@ def create_material():
         return jsonify({"error": str(error)}), 400
 
 
-def await_adaptation(material_id, text, language, level="Intermediate"):
+def await_adaptation(material_id, text, language):
     result = local_adaptation(text, language)
     engine = "local"
     if ai_configured():
@@ -1170,9 +1088,6 @@ def await_adaptation(material_id, text, language, level="Intermediate"):
             prompt = f"""
 Сен IncluLearn AI платформасындағы Ayla AI білім беру ассистентісің.
 Берілген оқу материалын оқушыға түсінікті және инклюзивті форматқа бейімде.
-
-Оқушы деңгейі: {level}
-Бұл деңгейге сай тіл күрделілігін, сөйлем ұзындығын және тапсырма қиындығын ретте.
 
 Қатаң ережелер:
 1. Тек берілген материалдағы ақпаратқа сүйен. Ойдан дерек, факт, анықтама қоспа.
