@@ -1,4 +1,3 @@
-
 const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
@@ -184,15 +183,36 @@ function renderResult(data) {
     if (!text.trim()) return toast("Оқылатын мәтін табылмады.");
 
     speechSynthesis.cancel();
+
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = state.language === "ru" ? "ru-RU" : state.language === "en" ? "en-US" : "kk-KZ";
+    const targetLang = state.language === "ru" ? "ru-RU" : state.language === "en" ? "en-US" : "kk-KZ";
+    const prefix = targetLang.slice(0, 2).toLowerCase();
+
+    utterance.lang = targetLang;
     utterance.rate = 0.9;
-    const voices = speechSynthesis.getVoices();
-    const prefix = state.language === "ru" ? "ru" : state.language === "en" ? "en" : "kk";
-    const voice = voices.find(v => v.lang.toLowerCase().startsWith(prefix));
-    if (voice) utterance.voice = voice;
-    speechSynthesis.speak(utterance);
-    toast("Аудио ойнатылып жатыр");
+    utterance.pitch = 1;
+    utterance.volume = 1;
+
+    const startSpeech = () => {
+      const voices = window.speechSynthesis.getVoices();
+      const voice = voices.find(v => v.lang.toLowerCase().startsWith(prefix));
+
+      if (voice) {
+        utterance.voice = voice;
+      }
+
+      utterance.onstart = () => toast("🔊 Аудио ойнатылып жатыр");
+      utterance.onerror = () => toast("Аудионы ойнату кезінде қате шықты");
+      utterance.onend = () => {};
+
+      window.speechSynthesis.speak(utterance);
+    };
+
+    if (speechSynthesis.getVoices().length === 0) {
+      speechSynthesis.onvoiceschanged = startSpeech;
+    } else {
+      startSpeech();
+    }
   });
   renderProgress(data.progress || state.progress);
   $("#outputSection").classList.remove("hidden");
