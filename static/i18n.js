@@ -33,7 +33,7 @@ window.LEARN4ALL_I18N = {
     audio: "Аудио нұсқа", large: "Үлкейтілген қаріп", summary: "Қысқаша резюме", tasks: "Бейімделген тапсырмалар",
     chooseMaterial: "Материалды енгізіңіз немесе жүктеңіз.", saved: "Материал сақталды және бейімделді.",
     copied: "Нәтиже көшірілді", allCopied: "Барлық нәтиже көшірілді", questionRequired: "Сұрағыңызды жазыңыз.",
-    answerLoading: "Ayla AI жауап дайындап жатыр…", practice: "Өзімді тексеру", practiceHint: "Тапсырманы орындаған соң белгі қойыңыз.",
+    answerLoading: "Ayla AI жауап дайындап жатыр…", 
     saveProgress: "Прогресті сақтау", progressSaved: "Прогресс сақталды.", allTasksDone: "Барлық тапсырма орындалды!",
     materialDeleted: "Материал өшірілді.", deleteConfirm: "Бұл материалды өшіруге сенімдісіз бе?",
     materialNotFound: "Материал табылмады.", noMaterials: "Материал табылмады.<br>Жұмыс кеңістігінен бірінші материалды қосыңыз.",
