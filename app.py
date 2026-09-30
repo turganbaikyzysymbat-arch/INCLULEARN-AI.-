@@ -1135,6 +1135,7 @@ def create_material():
         body = request.get_json(silent=True) if request.is_json else {}
         title = clean_text(request.form.get("title") or body.get("title", ""))
         language = request.form.get("language") or body.get("language") or "kk"
+        level = request.form.get("level") or body.get("level") or "Intermediate"
         file = request.files.get("file")
         text = request.form.get("text", "") or body.get("text", "")
         file_name = file.filename if file else ""
@@ -1153,7 +1154,7 @@ def create_material():
                 (title, text, file_name, language, timestamp, timestamp),
             )
             material_id = cursor.lastrowid
-        result = await_adaptation(material_id, text, language)
+        result = await_adaptation(material_id, text, language, level)
         return jsonify(
             {"id": material_id, "title": title, "source_text": text, "adaptation": result}
         ), 201
@@ -1161,7 +1162,7 @@ def create_material():
         return jsonify({"error": str(error)}), 400
 
 
-def await_adaptation(material_id, text, language):
+def await_adaptation(material_id, text, language, level="Intermediate"):
     result = local_adaptation(text, language)
     engine = "local"
     if ai_configured():
@@ -1169,6 +1170,9 @@ def await_adaptation(material_id, text, language):
             prompt = f"""
 Сен IncluLearn AI платформасындағы Ayla AI білім беру ассистентісің.
 Берілген оқу материалын оқушыға түсінікті және инклюзивті форматқа бейімде.
+
+Оқушы деңгейі: {level}
+Бұл деңгейге сай тіл күрделілігін, сөйлем ұзындығын және тапсырма қиындығын ретте.
 
 Қатаң ережелер:
 1. Тек берілген материалдағы ақпаратқа сүйен. Ойдан дерек, факт, анықтама қоспа.
