@@ -173,46 +173,78 @@ function renderResult(data) {
     navigator.clipboard?.writeText(typeof value === "object" ? JSON.stringify(value) : value || "");
     toast(t("copied"));
   };
-  $("#speak")?.addEventListener("click", () => {
-    if (!("speechSynthesis" in window)) {
-      return toast("Бұл браузерде мәтінді дыбыстау қолжетімсіз.");
+$("#speak")?.addEventListener("click", async () => {
+  if (!("speechSynthesis" in window)) {
+    return toast("Бұл браузерде аудио оқу қолжетімсіз.");
+  }
+
+  const text = String(state.result.audio || state.result.summary || "")
+    .replace(/[*#_`]/g, "")
+    .replace(/[^\p{L}\p{N}\s.,!?-]/gu, " ")
+    .trim();
+
+  if (!text) {
+    return toast("Оқылатын мәтін жоқ.");
+  }
+
+  window.speechSynthesis.cancel();
+
+  const speakNow = () => {
+    const voices = window.speechSynthesis.getVoices();
+
+    const lang =
+      state.language === "ru"
+        ? "ru-RU"
+        : state.language === "en"
+        ? "en-US"
+        : "kk-KZ";
+
+    const prefix = lang.substring(0, 2).toLowerCase();
+
+    let voice = voices.find(v =>
+      v.lang.toLowerCase().startsWith(prefix)
+    );
+
+    if (!voice) {
+      voice = voices.find(v =>
+        v.lang.toLowerCase().includes(prefix)
+      );
     }
-    const text = String(state.result.audio || state.result.summary || "")
-      .replace(/[*#_`]/g, "")
-      .replace(/[^\p{L}\p{N}\s.,!?-]/gu, " ");
-    if (!text.trim()) return toast("Оқылатын мәтін табылмады.");
 
-    speechSynthesis.cancel();
+    const utter = new SpeechSynthesisUtterance(text);
 
-    const utterance = new SpeechSynthesisUtterance(text);
-    const targetLang = state.language === "ru" ? "ru-RU" : state.language === "en" ? "en-US" : "kk-KZ";
-    const prefix = targetLang.slice(0, 2).toLowerCase();
+    utter.lang = lang;
+    utter.rate = 0.85;
+    utter.pitch = 1;
+    utter.volume = 1;
 
-    utterance.lang = targetLang;
-    utterance.rate = 0.9;
-    utterance.pitch = 1;
-    utterance.volume = 1;
+    if (voice) {
+      utter.voice = voice;
+    }
 
-    const startSpeech = () => {
-      const voices = window.speechSynthesis.getVoices();
-      const voice = voices.find(v => v.lang.toLowerCase().startsWith(prefix));
-
-      if (voice) {
-        utterance.voice = voice;
-      }
-
-      utterance.onstart = () => toast("🔊 Аудио ойнатылып жатыр");
-      utterance.onerror = () => toast("Аудионы ойнату кезінде қате шықты");
-      utterance.onend = () => {};
-
-      window.speechSynthesis.speak(utterance);
+    utter.onstart = () => {
+      toast("🔊 Аудио басталды");
     };
 
-    if (speechSynthesis.getVoices().length === 0) {
-      speechSynthesis.onvoiceschanged = startSpeech;
-    } else {
-      startSpeech();
-    }
+    utter.onerror = (e) => {
+      console.log(e);
+      toast("Аудио іске қосылмады");
+    };
+
+    utter.onend = () => {
+      toast("Аудио аяқталды");
+    };
+
+    window.speechSynthesis.speak(utter);
+  };
+
+
+  if (window.speechSynthesis.getVoices().length === 0) {
+    window.speechSynthesis.onvoiceschanged = speakNow;
+  } else {
+    speakNow();
+  }
+});
   });
   renderProgress(data.progress || state.progress);
   $("#outputSection").classList.remove("hidden");
