@@ -1,4 +1,5 @@
-const $ = (selector) => document.querySelector(selector);
+
+  const $ = (selector) => document.querySelector(selector);
 const $$ = (selector) => [...document.querySelectorAll(selector)];
 
 const state = {
@@ -174,47 +175,15 @@ function renderResult(data) {
     toast(t("copied"));
   };
   $("#speak")?.addEventListener("click", () => {
-    if (!("speechSynthesis" in window)) {
-      return toast("Бұл браузерде мәтінді дыбыстау қолжетімсіз.");
-    }
-    const text = String(state.result.audio || state.result.summary || "")
-      .replace(/[*#_`]/g, "")
-      .replace(/[^\p{L}\p{N}\s.,!?-]/gu, " ");
-    if (!text.trim()) return toast("Оқылатын мәтін табылмады.");
-
+    if (!("speechSynthesis" in window)) return toast(state.language === "kk" ? "Бұл браузерде аудио қолжетімсіз." : state.language === "ru" ? "Аудио недоступно в этом браузере." : "Audio is not available in this browser.");
     speechSynthesis.cancel();
-
-    const utterance = new SpeechSynthesisUtterance(text);
-    const targetLang = state.language === "ru" ? "ru-RU" : state.language === "en" ? "en-US" : "kk-KZ";
-    const prefix = targetLang.slice(0, 2).toLowerCase();
-
-    utterance.lang = targetLang;
-    utterance.rate = 0.9;
-    utterance.pitch = 1;
-    utterance.volume = 1;
-
-    const startSpeech = () => {
-      const voices = window.speechSynthesis.getVoices();
-      const voice = voices.find(v => v.lang.toLowerCase().startsWith(prefix));
-
-      if (voice) {
-        utterance.voice = voice;
-      }
-
-      utterance.onstart = () => toast("🔊 Аудио ойнатылып жатыр");
-      utterance.onerror = () => toast("Аудионы ойнату кезінде қате шықты");
-      utterance.onend = () => {};
-
-      window.speechSynthesis.speak(utterance);
-    };
-
-    if (speechSynthesis.getVoices().length === 0) {
-      speechSynthesis.onvoiceschanged = startSpeech;
-    } else {
-      startSpeech();
-    }
+    const utterance = new SpeechSynthesisUtterance(state.result.audio || "");
+    utterance.lang = state.language === "ru" ? "ru-RU" : state.language === "en" ? "en-US" : "kk-KZ";
+    speechSynthesis.speak(utterance);
+    toast(state.language === "kk" ? "Аудио ойнатылып жатыр" : state.language === "ru" ? "Аудио воспроизводится" : "Audio is playing");
   });
   renderProgress(data.progress || state.progress);
+  renderPractice();
   $("#outputSection").classList.remove("hidden");
   $("#outputSection").scrollIntoView({ behavior: "smooth", block: "start" });
 }
@@ -417,4 +386,3 @@ setAccessibility();
 fetch("/api/health").then((response) => response.json()).then((data) => {
   if (!data.database) $("#dbStatus").innerHTML = `<i style='background:#e09a50'></i> ${t("databaseConnected")}`;
 });
-
